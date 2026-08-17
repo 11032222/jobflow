@@ -1,0 +1,76 @@
+import request from './request'
+
+// ===== 认证 =====
+export const register = (data) => request.post('/auth/register', data)
+export const login = (data) => request.post('/auth/login', data)
+export const getMe = () => request.get('/auth/me')
+
+// ===== 用户 =====
+export const updateUser = (data) => request.put('/users/me', data)
+
+// ===== 简历 =====
+export const uploadResume = (file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return request.post('/resumes', form)
+}
+export const getResumes = () => request.get('/resumes')
+export const parseResume = (id) => request.post(`/resumes/${id}/parse`)
+export const deleteResume = (id) => request.delete(`/resumes/${id}`)
+
+// ===== 求职画像 =====
+export const getProfiles = () => request.get('/profiles')
+export const getCurrentProfile = () => request.get('/profiles/current')
+export const createProfile = (data) => request.post('/profiles', data)
+export const updateProfile = (id, data) => request.put(`/profiles/${id}`, data)
+export const setCurrentProfile = (id) => request.post(`/profiles/${id}/set-current`)
+export const addExperience = (profileId, data) =>
+  request.post(`/profiles/${profileId}/experiences`, data)
+export const updateExperience = (profileId, expId, data) =>
+  request.put(`/profiles/${profileId}/experiences/${expId}`, data)
+export const deleteExperience = (profileId, expId) =>
+  request.delete(`/profiles/${profileId}/experiences/${expId}`)
+export const addSkill = (profileId, data) =>
+  request.post(`/profiles/${profileId}/skills`, data)
+export const deleteSkill = (profileId, skillId) =>
+  request.delete(`/profiles/${profileId}/skills/${skillId}`)
+
+// ===== 求职偏好 =====
+export const getPreference = () => request.get('/preferences')
+export const savePreference = (data) => request.put('/preferences', data)
+
+// ===== 岗位 =====
+export const getJobs = (params) => request.get('/jobs', { params })
+export const getJob = (id) => request.get(`/jobs/${id}`)
+export const addFavorite = (id) => request.post(`/jobs/${id}/favorite`)
+export const removeFavorite = (id) => request.delete(`/jobs/${id}/favorite`)
+export const importJobs = (data) => request.post('/jobs/import', data)
+export const getJobSources = () => request.get('/jobs/sources')
+
+// ===== 公司 =====
+export const getCompany = (id) => request.get(`/companies/${id}`)
+
+// ===== 推荐 =====
+export const getRecommendations = (params) => request.get('/recommendations', { params })
+export const matchJob = (jobId) => request.post(`/recommendations/jobs/${jobId}/match`)
+
+// ===== 投递 =====
+export const createApplication = (data) => request.post('/applications', data)
+export const getApplications = (params) => request.get('/applications', { params })
+export const getApplication = (id) => request.get(`/applications/${id}`)
+export const submitApplication = (id) => request.post(`/applications/${id}/submit`)
+export const updateApplicationStatus = (id, data) =>
+  request.post(`/applications/${id}/status`, data)
+
+// ===== 面试 =====
+export const getInterviews = () => request.get('/interviews')
+export const createInterview = (data) => request.post('/interviews', data)
+export const updateInterview = (id, data) => request.put(`/interviews/${id}`, data)
+export const deleteInterview = (id) => request.delete(`/interviews/${id}`)
+
+// ===== Agent 任务 =====
+export const getTasks = (params) => request.get('/tasks', { params })
+export const getTask = (id) => request.get(`/tasks/${id}`)
+
+// ===== 系统状态 =====
+export const getSystemStatus = () => request.get('/system/status')

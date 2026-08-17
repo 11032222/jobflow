@@ -1,0 +1,36 @@
+# 环境变量（含数据库密码/SMTP 授权码等敏感信息，禁止提交）
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# 本地开发数据库（SQLite 回退）
+*.db
+*.sqlite3
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+
+# IDE / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.history/
+.DS_Store
+Thumbs.db
+
+# 日志 / 上传文件
+*.log
+uploads/
+logs/
+
