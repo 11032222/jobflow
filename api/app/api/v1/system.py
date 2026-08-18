@@ -11,9 +11,11 @@ router = APIRouter()
 
 @router.get("/status")
 def system_status(current_user: User = Depends(get_current_user)):
+    from app.agents.llm import llm_service
+
     return {
-        "llm_available": llm_service.available,
-        "llm_model": llm_service.model if llm_service.available else None,
+        "llm_available": llm_service.is_available(current_user.id),
+        "llm_model": (llm_service._resolve(current_user.id) or {}).get("model"),
         "mail_mode": settings.MAIL_MODE,
         "smtp_configured": settings.smtp_configured,
         "demo_inbox": settings.DEMO_INBOX,

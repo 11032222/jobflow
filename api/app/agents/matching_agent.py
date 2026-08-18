@@ -9,9 +9,11 @@ logger = logging.getLogger(__name__)
 class MatchingAgent:
     """匹配分析 Agent：在规则分数基础上，用 LLM 生成推荐理由/优势/不足。"""
 
-    def enhance(self, profile: dict, job: dict) -> dict | None:
+    def enhance(
+        self, profile: dict, job: dict, user_id: int | None = None
+    ) -> dict | None:
         """返回 {"recommend_reason", "strengths", "weaknesses"}，LLM 不可用时返回 None。"""
-        if not llm_service.available:
+        if not llm_service.is_available(user_id):
             return None
         prompt = (
             "你是招聘匹配分析专家。请基于候选人画像与岗位要求，客观分析匹配情况，只输出 JSON：\n"
@@ -20,7 +22,9 @@ class MatchingAgent:
             f"候选人画像：{self._compact(profile)}\n\n"
             f"岗位信息：{self._compact(job)}"
         )
-        data = llm_service.chat_json([{"role": "user", "content": prompt}])
+        data = llm_service.chat_json(
+            [{"role": "user", "content": prompt}], user_id=user_id
+        )
         if not data or not isinstance(data.get("recommend_reason"), str):
             return None
         return {

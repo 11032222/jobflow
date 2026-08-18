@@ -1,6 +1,6 @@
 {
-  "name": "web",
-  "version": "0.0.0",
+  "name": "jobflow-web",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "electron:dev": "set JOBFLOW_DEV=1 && electron ."
+    "electron:dev": "set JOBFLOW_DEV=1 && electron .",
+    "electron:build": "vite build && electron-builder --win"
   },
   "dependencies": {
     "axios": "^1.19.0",
@@ -20,8 +21,32 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.8",
+    "electron-builder": "^26.15.3",
     "vite": "^8.1.5",
     "vite-plugin-vue-devtools": "^8.1.5"
+  },
+  "build": {
+    "appId": "com.jobflow.desktop",
+    "productName": "JobFlow",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
   },
   "engines": {
     "node": "^22.18.0 || >=24.12.0"
