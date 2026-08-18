@@ -2,6 +2,7 @@ const { app, BrowserWindow } = require('electron')
 const path = require('path')
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173'
+const isDev = process.env.JOBFLOW_DEV === '1' || process.env.NODE_ENV !== 'production'
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -10,6 +11,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 700,
     title: 'JobFlow 智能求职辅助系统',
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -17,12 +19,14 @@ function createWindow() {
     },
   })
 
-  // 开发模式加载 Vite dev server；生产加载构建产物
-  if (process.env.JOBFLOW_DEV === '1' || process.env.NODE_ENV !== 'production') {
+  if (isDev) {
+    // 开发模式：加载 Vite dev server
     win.loadURL(DEV_SERVER_URL)
     win.webContents.openDevTools({ mode: 'detach' })
   } else {
-    win.loadFile(path.join(__dirname, '../dist/index.html'))
+    // 生产模式：加载构建产物 dist/index.html
+    const indexPath = path.join(__dirname, '..', 'dist', 'index.html')
+    win.loadFile(indexPath)
   }
 }
 
@@ -36,3 +40,4 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
+

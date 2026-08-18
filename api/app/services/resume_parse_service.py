@@ -106,7 +106,7 @@ def run_resume_parse(resume_id: int) -> None:
 
         text = extract_text(resume.file_path, resume.file_type)
         resume.raw_text = text
-        result = resume_agent.parse(text)
+        result = resume_agent.parse(text, user_id=resume.user_id)
 
         if result["status"] == "SUCCESS" and result.get("profile"):
             _create_profile_from_result(db, resume.user_id, resume, result["profile"])

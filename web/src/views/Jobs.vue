@@ -22,6 +22,12 @@
             <el-option label="校招" value="校招" />
           </el-select>
         </el-form-item>
+        <el-form-item label="平台">
+          <el-select v-model="filters.source" placeholder="全部" clearable style="width: 110px" @change="load">
+            <el-option label="智联招聘" value="zhaopin" />
+            <el-option label="模拟数据" value="mock" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="经验">
           <el-select v-model="filters.experience" placeholder="全部" clearable style="width: 110px" @change="load">
             <el-option label="经验不限" value="不限" />
@@ -33,7 +39,17 @@
         <el-form-item>
           <el-button type="primary" @click="load">查询</el-button>
           <el-button @click="resetFilters">重置</el-button>
-          <el-button type="success" plain :loading="importing" @click="handleImport">🚀 从平台导入岗位</el-button>
+          <el-dropdown style="margin-left: 8px" @command="handleImport">
+            <el-button type="success" plain :loading="importing">
+              🚀 从平台导入岗位<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="zhaopin">智联招聘</el-dropdown-item>
+                <el-dropdown-item command="mock">模拟数据</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </el-form-item>
       </el-form>
     </el-card>
@@ -61,6 +77,11 @@
           <template #default="{ row }">
             <div>{{ row.education }} · {{ row.experience }}</div>
             <el-tag v-if="row.job_type === '实习'" size="small" type="warning" effect="plain">实习</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="来源" width="100">
+          <template #default="{ row }">
+            <el-tag :type="sourceType(row.source)" size="small" effect="plain">{{ sourceText(row.source) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="匹配" width="110">
@@ -98,6 +119,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElNotification } from 'element-plus'
+import { ArrowDown } from '@element-plus/icons-vue'
 import { addFavorite, getJobs, getJobSources, importJobs, matchJob, removeFavorite } from '@/api'
 
 const jobs = ref([])
@@ -107,11 +129,18 @@ const pageSize = 10
 const importing = ref(false)
 
 const filters = reactive({
-  keyword: '', city: '', education: '', job_type: '', experience: '',
+  keyword: '', city: '', education: '', job_type: '', experience: '', source: '',
 })
 
 function levelType(level) {
   return { S: 'danger', A: 'warning', B: 'primary', C: 'info', D: 'info' }[level] || 'info'
+}
+
+function sourceText(s) {
+  return { zhaopin: '智联招聘', mock: '模拟数据', liepin: '猎聘', ncss: '24365' }[s] || s || '-'
+}
+function sourceType(s) {
+  return { zhaopin: 'success', mock: 'info' }[s] || 'info'
 }
 
 async function load() {
@@ -121,7 +150,7 @@ async function load() {
 }
 
 function resetFilters() {
-  Object.assign(filters, { keyword: '', city: '', education: '', job_type: '', experience: '' })
+  Object.assign(filters, { keyword: '', city: '', education: '', job_type: '', experience: '', source: '' })
   page.value = 1
   load()
 }
@@ -143,11 +172,11 @@ async function handleMatch(row) {
   load()
 }
 
-async function handleImport() {
+async function handleImport(platform) {
   importing.value = true
   try {
     const res = await importJobs({
-      platform: 'zhaopin',
+      platform,
       keyword: filters.keyword || 'Java',
       city: filters.city || '北京',
       pages: 1,
@@ -157,12 +186,12 @@ async function handleImport() {
     for (let i = 0; i < 8; i++) {
       await new Promise((r) => setTimeout(r, 2000))
       const sources = await getJobSources()
-      const latest = sources.find((s) => s.platform === 'zhaopin')
+      const latest = sources.find((s) => s.platform === platform)
       if (latest && latest.status !== 'QUEUED' && latest.status !== 'RUNNING') {
         if (latest.status === 'SUCCESS') {
           ElNotification({
             title: '采集完成',
-            message: `智联平台导入 ${latest.imported_count} 条岗位（共发现 ${latest.total_found} 条）`,
+            message: `${sourceText(platform)}导入 ${latest.imported_count} 条岗位（共发现 ${latest.total_found} 条）`,
             type: 'success',
           })
         } else {

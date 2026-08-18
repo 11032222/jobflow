@@ -23,12 +23,12 @@ COMMON_SKILLS = [
 class ResumeAgent:
     """简历解析 Agent。"""
 
-    def parse(self, raw_text: str) -> dict:
+    def parse(self, raw_text: str, user_id: int | None = None) -> dict:
         text = raw_text or ""
         if not text.strip():
             return {"status": "EMPTY", "profile": None}
-        if llm_service.available:
-            result = self._llm_parse(text)
+        if llm_service.is_available(user_id):
+            result = self._llm_parse(text, user_id)
             if result:
                 result["source"] = "LLM"
                 return {"status": "SUCCESS", "profile": result}
@@ -36,7 +36,7 @@ class ResumeAgent:
         profile["source"] = "RULE"
         return {"status": "SUCCESS", "profile": profile}
 
-    def _llm_parse(self, text: str) -> dict | None:
+    def _llm_parse(self, text: str, user_id: int | None = None) -> dict | None:
         prompt = (
             "你是简历解析助手。请从下面的简历文本中提取结构化信息，只输出 JSON，不要任何其他内容。\n"
             "输出格式：\n"
@@ -53,10 +53,42 @@ class ResumeAgent:
             "注意：简历中不存在的信息填 null 或空数组，不要编造。\n\n"
             f"简历文本：\n{text[:6000]}"
         )
-        data = llm_service.chat_json([{"role": "user", "content": prompt}])
+        data = llm_service.chat_json([{"role": "user", "content": prompt}], user_id=user_id)
         if not data:
             return None
         return self._validate_llm_output(data)
+
+    def suggest_improvements(
+        self, profile_data: dict, user_id: int | None = None
+    ) -> dict | None:
+        """生成简历修改建议（LLM）。返回 {suggestions: [...]}，无 LLM 时返回 None。"""
+        if not llm_service.is_available(user_id):
+            return None
+        prompt = (
+            "你是资深职业规划师和简历优化专家。请基于候选人画像给出可执行的简历优化建议，只输出 JSON：\n"
+            '{"summary_suggestion": "个人简介改写建议(80字内)", '
+            '"skills_suggestion": "技能补强建议(80字内)", '
+            '"experience_suggestions": ["经历描述优化建议1(60字内)", "建议2"], '
+            '"highlight_points": ["可在简历中突出的亮点1", "亮点2"]}\n\n'
+            f"候选人画像：{self._compact(profile_data)}"
+        )
+        data = llm_service.chat_json([{"role": "user", "content": prompt}], user_id=user_id)
+        if not data:
+            return None
+        data.setdefault("summary_suggestion", "")
+        data.setdefault("skills_suggestion", "")
+        data.setdefault("experience_suggestions", [])
+        data.setdefault("highlight_points", [])
+        return data
+
+    @staticmethod
+    def _compact(data: dict) -> str:
+        import json
+
+        try:
+            return json.dumps(data, ensure_ascii=False, default=str)[:1500]
+        except (TypeError, ValueError):
+            return str(data)[:1500]
 
     def _validate_llm_output(self, data: dict) -> dict | None:
         if not isinstance(data.get("name"), str) and not isinstance(data.get("title"), str):

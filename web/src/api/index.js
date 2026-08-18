@@ -74,3 +74,11 @@ export const getTask = (id) => request.get(`/tasks/${id}`)
 
 // ===== 系统状态 =====
 export const getSystemStatus = () => request.get('/system/status')
+
+// ===== 模型服务配置 =====
+export const getModelConfig = () => request.get('/settings/model')
+export const saveModelConfig = (data) => request.put('/settings/model', data)
+export const testModelConfig = (data) => request.post('/settings/model/test', data)
+
+// ===== 简历修改建议 =====
+export const getProfileSuggestions = (profileId) => request.post(`/profiles/${profileId}/suggestions`)

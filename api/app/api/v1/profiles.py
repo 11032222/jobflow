@@ -211,3 +211,39 @@ def delete_skill(
     db.commit()
     return _to_out(db.get(CandidateProfile, profile_id), db)
 
+
+@router.post("/{profile_id}/suggestions")
+def suggest_profile(
+    profile_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """基于当前画像生成简历修改建议（LLM，未配置模型时返回提示）。"""
+    from app.agents.resume_agent import resume_agent
+
+    profile = db.get(CandidateProfile, profile_id)
+    if profile is None or profile.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="画像不存在")
+    profile_data = {
+        "name": profile.name,
+        "title": profile.title,
+        "city": profile.city,
+        "education": profile.education_level,
+        "school": profile.school,
+        "major": profile.major,
+        "years": profile.years_of_experience,
+        "skills": [s.name for s in _load_skills(db, profile.id)],
+        "summary": profile.summary,
+        "experiences": [
+            {"type": e.type, "org": e.school_or_company, "title": e.title, "desc": e.description}
+            for e in _load_experiences(db, profile.id)
+        ],
+    }
+    suggestions = resume_agent.suggest_improvements(profile_data, user_id=current_user.id)
+    if suggestions is None:
+        return {
+            "available": False,
+            "message": "尚未配置模型服务，请在「设置 → 模型服务」中配置 API Key 后重试",
+        }
+    return {"available": True, "suggestions": suggestions}
+

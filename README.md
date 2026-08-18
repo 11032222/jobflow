@@ -61,8 +61,17 @@ npm run dev                             # http://localhost:5173
 ```bash
 cd web
 npm run dev                             # 终端 1：Vite
-npm run electron:dev                    # 终端 2：Electron 窗口
+npm run electron:dev                    # 终端 2：Electron 窗口（开发模式）
 ```
+
+打包 Windows 安装包（生产模式加载 dist）：
+
+```bash
+cd web
+npm run electron:build                  # 生成 release/ 下的安装程序
+```
+
+> 首次使用若 Electron 二进制未下载，执行：`cd web/node_modules/electron && set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ && node install.js`
 
 ## 演示账号
 
@@ -82,7 +91,11 @@ npm run electron:dev                    # 终端 2：Electron 窗口
 
 ## LLM Agent（可选增强）
 
-在 `.env` 配置后重启后端即可启用（未配置时自动走规则引擎，功能完整可用）：
+### 方式一：设置页配置（推荐，每个账号独立）
+
+在 **设置 → 模型服务** 中填写：协议（OpenAI 兼容）、Base URL、API Key、模型名称，可一键选择通义千问 / 智谱 GLM / DeepSeek / OpenAI 预设，支持**测试连接**。配置保存在数据库 `user_llm_configs` 表，密钥仅显示掩码。
+
+### 方式二：全局 .env 配置
 
 ```ini
 LLM_API_KEY=sk-xxx
@@ -90,15 +103,18 @@ LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1   # 通义千问 
 LLM_MODEL=qwen-plus
 ```
 
+未配置任何模型时自动走规则引擎，功能完整可用。
+
 | Agent | 能力 | 无 Key fallback |
 |---|---|---|
-| Resume Agent | 简历文本 → 结构化画像（基本信息/技能/经历 JSON） | 正则规则提取（姓名/电话/邮箱/学校/技能） |
+| Resume Agent | 简历文本 → 结构化画像；**简历修改建议**（个人简介/技能补强/经历优化/突出亮点） | 正则规则提取（姓名/电话/邮箱/学校/技能） |
 | Matching Agent | 生成可解释推荐理由、优势、不足 | 规则引擎四维评分 + 模板理由 |
 
 ## 平台采集（P2）
 
 - Adapter 架构（`collectors/`）：`search_jobs()` / `get_company_info()` 统一接口，新增平台只需实现 Adapter 并在 `registry.py` 注册
 - 智联 Adapter：解析 `sou.zhaopin.com` SSR 页面的 `__INITIAL_STATE__`，支持关键词 + 城市（北京/上海/深圳/杭州等）
+- 岗位库支持**按平台筛选**（智联/模拟），每列显示来源标识；导入岗位可下拉选择平台
 - 采集任务异步执行，`job_sources` 表记录每次采集的关键词/城市/发现数/导入数/状态
 
 ## 邮件投递演示（如何证明投递功能做好了）
