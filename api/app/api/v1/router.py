@@ -11,6 +11,7 @@ from app.api.v1 import (
     profiles,
     recommendations,
     resumes,
+    settings,
     system,
     tasks,
     users,
@@ -29,3 +30,4 @@ api_router.include_router(applications.router, prefix="/applications", tags=["�
 api_router.include_router(interviews.router, prefix="/interviews", tags=["面试"])
 api_router.include_router(tasks.router, prefix="/tasks", tags=["Agent任务"])
 api_router.include_router(system.router, prefix="/system", tags=["系统状态"])
+api_router.include_router(settings.router, prefix="/settings", tags=["模型配置"])

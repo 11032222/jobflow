@@ -194,7 +194,7 @@ def compute_match(
         "requirements": job.requirements,
         "description": job.description,
     }
-    enhanced = matching_agent.enhance(profile_data, job_data)
+    enhanced = matching_agent.enhance(profile_data, job_data, user_id=user_id)
     if enhanced:
         result.recommend_reason = enhanced["recommend_reason"]
         result.strengths = enhanced["strengths"] or None

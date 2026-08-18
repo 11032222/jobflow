@@ -123,6 +123,42 @@
             </el-timeline-item>
           </el-timeline>
           <el-button type="primary" plain size="small" @click="expDialogVisible = true">+ 添加经历</el-button>
+
+          <el-divider content-position="left">🤖 AI 简历修改建议</el-divider>
+          <el-button type="warning" plain size="small" :loading="suggesting" @click="handleSuggestions">
+            ✨ 生成简历修改建议
+          </el-button>
+          <div v-if="suggestions" class="suggestion-area">
+            <el-alert
+              v-if="suggestions.available === false"
+              type="info"
+              :closable="false"
+              show-icon
+              :title="suggestions.message"
+            />
+            <template v-else>
+              <div class="suggest-item">
+                <b>📝 个人简介建议</b>
+                <p>{{ suggestions.suggestions.summary_suggestion || '-' }}</p>
+              </div>
+              <div class="suggest-item">
+                <b>🛠️ 技能补强建议</b>
+                <p>{{ suggestions.suggestions.skills_suggestion || '-' }}</p>
+              </div>
+              <div v-if="suggestions.suggestions.experience_suggestions?.length" class="suggest-item">
+                <b>📈 经历描述优化</b>
+                <ul>
+                  <li v-for="(s, i) in suggestions.suggestions.experience_suggestions" :key="i">{{ s }}</li>
+                </ul>
+              </div>
+              <div v-if="suggestions.suggestions.highlight_points?.length" class="suggest-item">
+                <b>⭐ 可突出亮点</b>
+                <ul>
+                  <li v-for="(s, i) in suggestions.suggestions.highlight_points" :key="i">{{ s }}</li>
+                </ul>
+              </div>
+            </template>
+          </div>
         </el-card>
 
         <el-card v-else>
@@ -177,7 +213,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
 import {
   addExperience, addSkill, createProfile, deleteExperience, deleteResume, deleteSkill,
-  getCurrentProfile, getPreference, getResumes, parseResume, savePreference, updateProfile, uploadResume,
+  getCurrentProfile, getPreference, getProfileSuggestions, getResumes, parseResume, savePreference, updateProfile, uploadResume,
 } from '@/api'
 
 const resumes = ref([])
@@ -204,6 +240,8 @@ const expForm = reactive({
   description: '', start_date: null, end_date: null,
 })
 const expRangeValue = ref([])
+const suggestions = ref(null)
+const suggesting = ref(false)
 
 
 function fillProfileForm(p) {
@@ -333,6 +371,16 @@ async function handleDeleteExp(e) {
   await loadAll()
 }
 
+async function handleSuggestions() {
+  if (!profile.value) return
+  suggesting.value = true
+  try {
+    suggestions.value = await getProfileSuggestions(profile.value.id)
+  } finally {
+    suggesting.value = false
+  }
+}
+
 async function handleSavePref() {
   savingPref.value = true
   try {
@@ -394,6 +442,25 @@ onMounted(loadAll)
   color: #606266;
   font-size: 13px;
   margin-top: 4px;
+}
+.suggestion-area {
+  margin-top: 12px;
+  background: #fdf6ec;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.suggest-item {
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.suggest-item ul {
+  padding-left: 20px;
+  color: #606266;
+}
+.suggest-item p {
+  color: #606266;
+  margin-top: 4px;
+  line-height: 1.6;
 }
 </style>
 
