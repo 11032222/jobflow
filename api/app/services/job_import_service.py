@@ -1,6 +1,10 @@
-"""岗位采集导入服务：Adapter → 公司/岗位落库 → 去重。"""
+"""岗位采集导入服务：多平台 Adapter → 公司/岗位落库 → 跨源去重。"""
+from __future__ import annotations
+
 import hashlib
+import json
 import logging
+import re
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -9,19 +13,100 @@ from app.collectors.registry import get_adapter
 from app.models.company import Company
 from app.models.job import Job
 from app.models.job_source import JobSource
+from app.models.preference import Preference
+from app.models.profile import CandidateProfile
 
 logger = logging.getLogger(__name__)
 
 
+def _norm_text(value: str | None) -> str:
+    text = (value or "").strip().lower()
+    text = re.sub(r"[\s\-_/（）()【】\[\]·•\.]+", "", text)
+    for suffix in ("股份有限公司", "有限责任公司", "科技有限公司", "有限公司", "集团", "控股"):
+        text = text.replace(suffix, "")
+    return text
+
+
 def _dedup_hash(job: dict) -> str:
+    """跨平台去重键：公司 + 职位 + 城市（忽略薪资文案差异）。"""
     raw = "|".join([
-        str(job.get("company_name", "")),
-        str(job.get("title", "")),
-        str(job.get("city", "")),
-        str(job.get("salary_text", "")),
-        str((job.get("description") or "")[:80]),
+        _norm_text(job.get("company_name")),
+        _norm_text(job.get("title")),
+        _norm_text(job.get("city")),
     ])
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
+
+
+def _json_list(value) -> list:
+    if not value:
+        return []
+    if isinstance(value, list):
+        return value
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def resolve_search_query(db: Session, user_id: int, data) -> dict:
+    """关键词/城市/薪资：请求显式值优先，否则用画像 + 求职偏好。"""
+    keyword = (getattr(data, "keyword", None) or "").strip()
+    city = (getattr(data, "city", None) or "").strip()
+    salary_min = getattr(data, "salary_min", None)
+    salary_max = getattr(data, "salary_max", None)
+    use_profile = bool(getattr(data, "use_profile", True))
+
+    pref = db.query(Preference).filter(Preference.user_id == user_id).first()
+    profile = (
+        db.query(CandidateProfile)
+        .filter(CandidateProfile.user_id == user_id, CandidateProfile.is_current.is_(True))
+        .first()
+    )
+
+    if use_profile:
+        if not keyword:
+            positions = _json_list(pref.target_positions if pref else None)
+            keywords = _json_list(pref.keywords if pref else None)
+            keyword = (
+                (positions[0] if positions else "")
+                or (profile.title if profile else "")
+                or (keywords[0] if keywords else "")
+                or (profile.skills[0].name if profile and profile.skills else "")
+            )
+        if not city:
+            cities = _json_list(pref.cities if pref else None)
+            city = (cities[0] if cities else "") or (profile.city if profile else "")
+        if salary_min is None and pref:
+            salary_min = pref.salary_min
+        if salary_max is None and pref:
+            salary_max = pref.salary_max
+
+    keyword = keyword or "Java"
+    city = city or "北京"
+    pages = max(1, min(int(getattr(data, "pages", 1) or 1), 5))
+    return {
+        "keyword": keyword,
+        "city": city,
+        "salary_min": salary_min,
+        "salary_max": salary_max,
+        "pages": pages,
+        "from_profile": use_profile,
+    }
+
+
+def _salary_overlap(job: dict, salary_min: int | None, salary_max: int | None) -> bool:
+    if salary_min is None and salary_max is None:
+        return True
+    jmin = job.get("salary_min")
+    jmax = job.get("salary_max")
+    if jmin is None and jmax is None:
+        return True
+    if salary_min is not None and jmax is not None and jmax < salary_min:
+        return False
+    if salary_max is not None and jmin is not None and jmin > salary_max:
+        return False
+    return True
 
 
 def _get_or_create_company(db: Session, name: str, info: dict | None) -> Company | None:
@@ -60,9 +145,10 @@ def _import(db: Session, job_source_id: int) -> dict:
         return {"error": "采集任务不存在"}
     source.status = "RUNNING"
     source.started_at = datetime.now()
+    source.error_message = None
     db.commit()
 
-    stats = {"total_found": 0, "imported": 0, "duplicated": 0, "skipped": 0}
+    stats = {"total_found": 0, "imported": 0, "duplicated": 0, "skipped": 0, "filtered": 0}
     try:
         adapter = get_adapter(source.platform)
         raw_jobs = adapter.search_jobs(
@@ -70,12 +156,18 @@ def _import(db: Session, job_source_id: int) -> dict:
             city=source.city or "北京",
             page=1,
             page_size=30,
+            pages=source.pages or 1,
+            salary_min=source.salary_min,
+            salary_max=source.salary_max,
         )
         stats["total_found"] = len(raw_jobs)
 
-        existing_hashes = set()  # 本次会话内去重
+        existing_hashes = set()
         for job in raw_jobs:
-            # 同一平台同一条目的岗位已存在 → 跳过
+            if not _salary_overlap(job, source.salary_min, source.salary_max):
+                stats["filtered"] += 1
+                continue
+
             exists = (
                 db.query(Job)
                 .filter(
@@ -90,9 +182,10 @@ def _import(db: Session, job_source_id: int) -> dict:
 
             h = _dedup_hash(job)
             dup = db.query(Job).filter(Job.dedup_hash == h).first()
-            is_dup = dup is not None or h in existing_hashes
-            if is_dup:
+            if dup is not None or h in existing_hashes:
                 stats["duplicated"] += 1
+                existing_hashes.add(h)
+                continue
             existing_hashes.add(h)
 
             company = _get_or_create_company(db, job["company_name"], None)
@@ -117,7 +210,7 @@ def _import(db: Session, job_source_id: int) -> dict:
                 source_url=job.get("source_url"),
                 source_job_id=job["source_job_id"],
                 dedup_hash=h,
-                is_duplicate=is_dup,
+                is_duplicate=False,
                 status="ACTIVE",
                 raw_data=_json_dumps(job),
             )
@@ -135,16 +228,17 @@ def _import(db: Session, job_source_id: int) -> dict:
     except Exception as exc:  # noqa: BLE001
         logger.exception("采集导入失败 job_source_id=%s", job_source_id)
         db.rollback()
-        source.status = "FAILED"
-        source.finished_at = datetime.now()
-        db.commit()
+        source = db.get(JobSource, job_source_id)
+        if source:
+            source.status = "FAILED"
+            source.finished_at = datetime.now()
+            source.error_message = str(exc)[:500]
+            db.commit()
         stats["error"] = str(exc)
         return stats
 
 
 def _json_dumps(value) -> str:
-    import json
-
     try:
         return json.dumps(value, ensure_ascii=False, default=str)
     except (TypeError, ValueError):

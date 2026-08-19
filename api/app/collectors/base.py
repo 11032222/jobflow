@@ -15,8 +15,12 @@ class PlatformAdapter(ABC):
         city: str | None = None,
         page: int = 1,
         page_size: int = 30,
+        **kwargs,
     ) -> list[dict]:
-        """搜索岗位，返回标准化岗位字典列表。"""
+        """搜索岗位，返回标准化岗位字典列表。
+
+        可选 kwargs：salary_min / salary_max（元/月）、pages、experience、job_type。
+        """
 
     @abstractmethod
     def get_company_info(self, company_name: str) -> dict | None:

@@ -41,16 +41,23 @@ def _client() -> httpx.Client:
 
 
 def parse_salary(text: str | None) -> tuple[int | None, int | None]:
-    """解析薪资文本，返回 (min, max) 元/月。支持 '1.4-1.5万' / '8000-12000元' / '面议'。"""
+    """解析薪资文本，返回 (min, max) 元/月。支持 '1.4-1.5万' / '20-40K·16薪' / '8000-12000元' / '面议'。"""
     if not text:
         return None, None
     text = str(text).strip()
     if "面议" in text or "面谈" in text or "不限" in text:
         return None, None
+    # 去掉「·16薪」以免把薪数当成金额
+    text = re.sub(r"[·•.\s]*\d+\s*薪", "", text)
     nums = [float(n) for n in re.findall(r"[\d.]+", text)]
     if not nums:
         return None, None
-    unit = 10000 if ("万" in text and "元" not in text) else 1
+    if "万" in text and "元" not in text:
+        unit = 10000
+    elif re.search(r"[kK千]", text):
+        unit = 1000
+    else:
+        unit = 1
     if len(nums) >= 2:
         return int(nums[0] * unit), int(nums[1] * unit)
     return int(nums[0] * unit), None
@@ -126,22 +133,32 @@ class ZhaopinAdapter(PlatformAdapter):
         city: str | None = None,
         page: int = 1,
         page_size: int = 30,
+        **kwargs,
     ) -> list[dict]:
+        pages = max(1, int(kwargs.get("pages") or 1))
         city_code = CITY_CODES.get(city or "", DEFAULT_CITY_ID)
-        url = f"https://sou.zhaopin.com/?jl={city_code}&kw={keyword}&p={max(page, 1)}"
-        logger.info("智联采集: %s", url)
+        jobs: list[dict] = []
+        seen: set[str] = set()
         with _client() as client:
-            resp = client.get(url)
-            resp.raise_for_status()
-            state = _extract_state(resp.text)
-        position_list = state.get("positionList") or []
-        jobs = []
-        for raw in position_list:
-            job = _normalize_job(raw, city_code)
-            if job:
-                jobs.append(job)
-            if len(jobs) >= page_size:
-                break
+            for p in range(page, page + pages):
+                url = f"https://sou.zhaopin.com/?jl={city_code}&kw={keyword}&p={max(p, 1)}"
+                logger.info("智联采集: %s", url)
+                resp = client.get(url)
+                resp.raise_for_status()
+                state = _extract_state(resp.text)
+                for raw in state.get("positionList") or []:
+                    job = _normalize_job(raw, city_code)
+                    if not job:
+                        continue
+                    sid = job["source_job_id"]
+                    if sid in seen:
+                        continue
+                    seen.add(sid)
+                    jobs.append(job)
+                    if len(jobs) >= page_size * pages:
+                        break
+                if len(jobs) >= page_size * pages:
+                    break
         logger.info("智联采集完成: %d 条", len(jobs))
         return jobs
 

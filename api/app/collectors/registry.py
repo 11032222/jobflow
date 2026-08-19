@@ -2,12 +2,22 @@
 from app.collectors.base import PlatformAdapter
 from app.collectors.mock import MockAdapter
 from app.collectors.zhaopin import ZhaopinAdapter
+from app.collectors.zhipin import ZhipinAdapter
 
 _REGISTRY = {
     "zhaopin": ZhaopinAdapter,
+    "zhipin": ZhipinAdapter,
     "liepin": None,  # 预留
     "ncss": None,    # 预留（24365）
     "mock": MockAdapter,
+}
+
+PLATFORM_LABELS = {
+    "zhaopin": "智联招聘",
+    "zhipin": "BOSS直聘",
+    "mock": "模拟数据",
+    "liepin": "猎聘",
+    "ncss": "24365",
 }
 
 

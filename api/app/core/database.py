@@ -1,7 +1,7 @@
 """数据库连接与会话管理。"""
 import logging
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -54,4 +54,27 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def ensure_schema() -> None:
+    """给已有库补齐新增列（create_all 不会 ALTER）。"""
+    insp = inspect(engine)
+    if not insp.has_table("job_sources"):
+        return
+    cols = {c["name"] for c in insp.get_columns("job_sources")}
+    alters = []
+    if "salary_min" not in cols:
+        alters.append("ALTER TABLE job_sources ADD COLUMN salary_min INTEGER")
+    if "salary_max" not in cols:
+        alters.append("ALTER TABLE job_sources ADD COLUMN salary_max INTEGER")
+    if "pages" not in cols:
+        alters.append("ALTER TABLE job_sources ADD COLUMN pages INTEGER DEFAULT 1")
+    if "error_message" not in cols:
+        alters.append("ALTER TABLE job_sources ADD COLUMN error_message VARCHAR(512)")
+    if not alters:
+        return
+    with engine.begin() as conn:
+        for stmt in alters:
+            conn.execute(text(stmt))
+    logger.info("已补齐 job_sources 列: %s", [s.split()[-2] for s in alters])
 

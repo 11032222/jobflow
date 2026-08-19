@@ -1,11 +1,11 @@
 {
   "name": "jobflow-web",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0 --port 5174",
     "build": "vite build",
     "preview": "vite preview",
     "electron:dev": "set JOBFLOW_DEV=1 && electron .",

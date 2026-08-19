@@ -13,10 +13,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 app = FastAPI(
     title="JobFlow API",
     description="智能求职辅助系统后端接口",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 # 允许本地前端(Vite/Electron)跨域访问
+# WSL2 下 Windows 可能用 localhost / 127.0.0.1 / eth0 IP 访问
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -25,6 +26,7 @@ app.add_middleware(
         "file://",
         "http://localhost:5174",
     ],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|\[::1\]|172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,6 +43,9 @@ def on_startup() -> None:
     from app import models  # noqa: F401  确保模型已注册
 
     Base.metadata.create_all(bind=engine)
+    from app.core.database import ensure_schema
+
+    ensure_schema()
 
 
 @app.get("/api/health")

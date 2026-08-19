@@ -74,12 +74,16 @@ class MockAdapter(PlatformAdapter):
         city: str | None = None,
         page: int = 1,
         page_size: int = 30,
+        **kwargs,
     ) -> list[dict]:
         jobs = []
+        key = (keyword or "").strip().lower()
+        tokens = [t for t in key.replace("工程师", "").replace("开发", " ").split() if len(t) >= 2]
         for idx, item in enumerate(DEMO_JOBS):
-            if keyword and keyword.lower() not in item["title"].lower():
+            title = item["title"].lower()
+            if key and key not in title and not any(t in title for t in tokens):
                 continue
-            if city and city not in item["city"]:
+            if city and city not in ("全国", "不限") and city not in item["city"]:
                 continue
             min_s, max_s = _parse_salary(item["salary_text"])
             jobs.append(

@@ -45,10 +45,14 @@ class JobOut(BaseModel):
 
 
 class JobImportRequest(BaseModel):
-    platform: str = "zhaopin"
-    keyword: str = "Java"
-    city: str = "北京"
+    platform: str | None = None
+    platforms: list[str] | None = None
+    keyword: str | None = None
+    city: str | None = None
+    salary_min: int | None = None
+    salary_max: int | None = None
     pages: int = 1
+    use_profile: bool = True
 
 
 class MatchOut(BaseModel):

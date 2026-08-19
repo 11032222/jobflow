@@ -12,9 +12,13 @@ class JobSource(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    platform: Mapped[str] = mapped_column(String(32), default="zhaopin")  # zhaopin/liepin/mock
+    platform: Mapped[str] = mapped_column(String(32), default="zhaopin")  # zhaopin/zhipin/mock
     keyword: Mapped[str | None] = mapped_column(String(128), nullable=True)
     city: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    salary_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    salary_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pages: Mapped[int] = mapped_column(Integer, default=1)
+    error_message: Mapped[str | None] = mapped_column(String(512), nullable=True)
     total_found: Mapped[int] = mapped_column(Integer, default=0)
     imported_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(32), default="QUEUED")  # QUEUED/RUNNING/SUCCESS/FAILED/WAITING_USER

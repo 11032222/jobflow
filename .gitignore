@@ -34,3 +34,6 @@ Thumbs.db
 uploads/
 logs/
 
+# BOSS 调试 Chrome 独立配置（含登录态，禁止提交）
+auto-zhipin/chrome_profile/
+

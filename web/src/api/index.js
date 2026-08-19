@@ -46,6 +46,8 @@ export const addFavorite = (id) => request.post(`/jobs/${id}/favorite`)
 export const removeFavorite = (id) => request.delete(`/jobs/${id}/favorite`)
 export const importJobs = (data) => request.post('/jobs/import', data)
 export const getJobSources = () => request.get('/jobs/sources')
+export const getCollectors = () => request.get('/jobs/collectors')
+export const launchZhipinChrome = () => request.post('/jobs/collectors/zhipin/launch')
 
 // ===== 公司 =====
 export const getCompany = (id) => request.get(`/companies/${id}`)

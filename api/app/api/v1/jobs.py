@@ -155,6 +155,32 @@ def remove_favorite(
     return {"message": "已取消收藏"}
 
 
+@router.get("/collectors")
+def list_collectors():
+    """采集器状态：哪些平台可用、BOSS 调试 Chrome 是否在线。"""
+    from app.collectors.registry import PLATFORM_LABELS, supported_platforms
+    from app.collectors.zhipin import zhipin_ready
+
+    items = []
+    for pid in supported_platforms():
+        if pid == "zhipin":
+            items.append(zhipin_ready())
+        else:
+            items.append({"id": pid, "name": PLATFORM_LABELS.get(pid, pid), "ready": True, "hint": None})
+    return {"items": items}
+
+
+@router.post("/collectors/zhipin/launch")
+def launch_zhipin_chrome(current_user: User = Depends(get_current_user)):
+    """启动独立调试 Chrome（9222），打开 BOSS 登录页。"""
+    from app.collectors.zhipin_cdp import launch_debug_chrome
+
+    try:
+        return launch_debug_chrome()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/import")
 def import_jobs(
     data: JobImportRequest,
@@ -162,28 +188,65 @@ def import_jobs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """触发平台采集任务（后台异步执行，前端可轮询 /jobs/sources 查看进度）。"""
-    from app.collectors.registry import supported_platforms
+    """触发多平台采集（后台异步，前端轮询 /jobs/sources）。
+
+    关键词/城市/薪资可手填；use_profile=true 时用画像与求职偏好补全。
+    """
+    from app.collectors.registry import PLATFORM_LABELS, supported_platforms
     from app.models.job_source import JobSource
-    from app.services.job_import_service import import_jobs_from_platform
+    from app.services.job_import_service import import_jobs_from_platform, resolve_search_query
 
-    if data.platform not in supported_platforms():
-        raise HTTPException(status_code=400, detail=f"不支持的平台 {data.platform}，可用: {supported_platforms()}")
+    available = supported_platforms()
+    requested: list[str] = []
+    if data.platforms:
+        requested.extend(data.platforms)
+    if data.platform:
+        requested.append(data.platform)
+    requested = [p.lower() for p in requested if p]
+    if "all" in requested:
+        requested = [p for p in available if p != "mock"]
+    # 去重且保序
+    seen: set[str] = set()
+    platforms = []
+    for p in requested:
+        if p not in seen:
+            seen.add(p)
+            platforms.append(p)
+    if not platforms:
+        platforms = ["zhaopin"]
 
-    source = JobSource(
-        user_id=current_user.id,
-        platform=data.platform,
-        keyword=data.keyword,
-        city=data.city,
-        status="QUEUED",
-    )
-    db.add(source)
-    db.commit()
-    db.refresh(source)
-    background_tasks.add_task(import_jobs_from_platform, source.id)
+    unknown = [p for p in platforms if p not in available]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"不支持的平台 {unknown}，可用: {available}")
+
+    query = resolve_search_query(db, current_user.id, data)
+    tasks = []
+    labels = []
+    for platform in platforms:
+        source = JobSource(
+            user_id=current_user.id,
+            platform=platform,
+            keyword=query["keyword"],
+            city=query["city"],
+            salary_min=query["salary_min"],
+            salary_max=query["salary_max"],
+            pages=query["pages"],
+            status="QUEUED",
+        )
+        db.add(source)
+        db.commit()
+        db.refresh(source)
+        background_tasks.add_task(import_jobs_from_platform, source.id)
+        tasks.append({"platform": platform, "job_source_id": source.id, "status": "QUEUED"})
+        labels.append(PLATFORM_LABELS.get(platform, platform))
+
+    salary_hint = ""
+    if query["salary_min"] or query["salary_max"]:
+        salary_hint = f" / {query['salary_min'] or '?'}~{query['salary_max'] or '?'}元"
     return {
-        "message": f"已启动 {data.platform} 平台采集任务（关键词: {data.keyword} / {data.city}）",
-        "job_source_id": source.id,
+        "message": f"已启动 {' + '.join(labels)} 采集（{query['keyword']} / {query['city']}{salary_hint}）",
+        "query": query,
+        "tasks": tasks,
         "status": "QUEUED",
     }
 
