@@ -1,0 +1,10 @@
+[project]
+name = "auto-zhipin"
+version = "0.1.0"
+description = "通过Playwright自动拉取Boss直聘的岗位信息，并结合求职者的简历进行智能筛选。然后根据岗位描述和简历生成个性化的沟通文案，并自动发起与招聘方的沟通。以便求职者更高效地与招聘方建立联系，提升求职效率。"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fast-agent-mcp>=0.2.46",
+    "playwright>=1.54.0",
+]
