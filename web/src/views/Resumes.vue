@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div>
     <el-alert
       v-if="!profile"
@@ -8,21 +8,21 @@
       title="尚未建立求职画像。可以上传简历，或手动填写画像信息。"
       style="margin-bottom: 16px"
     />
-    <el-row :gutter="16">
-      <el-col :span="8">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>📄 简历文件</span>
-              <el-button type="primary" size="small" :loading="uploading" @click="fileInput?.click()">上传简历</el-button>
-              <input ref="fileInput" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" hidden @change="handleUpload" />
-            </div>
-          </template>
-          <el-empty v-if="!resumes.length" description="暂无简历文件" :image-size="80" />
+
+    <div class="resume-grid">
+      <!-- 左列 -->
+      <div class="left-col">
+        <section class="panel">
+          <header class="panel-header">
+            <span class="panel-title"><el-icon><Document /></el-icon>简历文件</span>
+            <el-button type="primary" size="small" :icon="Upload" :loading="uploading" @click="fileInput?.click()">上传简历</el-button>
+            <input ref="fileInput" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" hidden @change="handleUpload" />
+          </header>
+          <el-empty v-if="!resumes.length" description="暂无简历文件" :image-size="70" />
           <div v-for="r in resumes" :key="r.id" class="resume-item">
-            <el-icon :size="24" color="#409eff"><Document /></el-icon>
+            <span class="file-icon"><el-icon :size="20"><Document /></el-icon></span>
             <div class="resume-info">
-              <div class="resume-name">{{ r.file_name }}</div>
+              <div class="resume-name" :title="r.file_name">{{ r.file_name }}</div>
               <div class="resume-meta">
                 <el-tag size="small" :type="parseTag(r.parse_status)" effect="plain">{{ parseText(r.parse_status) }}</el-tag>
                 <span>{{ (r.file_size / 1024).toFixed(0) }} KB</span>
@@ -31,16 +31,14 @@
             <el-button v-if="r.parse_status !== 'SUCCESS' && r.parse_status !== 'PARSING'" link type="primary" size="small" @click="handleParse(r)">解析</el-button>
             <el-button link type="danger" size="small" @click="handleDelete(r)">删除</el-button>
           </div>
-        </el-card>
+        </section>
 
-        <el-card style="margin-top: 16px">
-          <template #header>
-            <div class="card-header">
-              <span>🎯 求职偏好</span>
-              <el-button type="primary" size="small" :loading="savingPref" @click="handleSavePref">保存</el-button>
-            </div>
-          </template>
-          <el-form label-width="80px" label-position="left" size="small">
+        <section class="panel">
+          <header class="panel-header">
+            <span class="panel-title"><el-icon><Aim /></el-icon>求职偏好</span>
+            <el-button type="primary" size="small" :loading="savingPref" @click="handleSavePref">保存</el-button>
+          </header>
+          <el-form label-width="80px" label-position="top" size="default">
             <el-form-item label="目标职位">
               <el-select v-model="pref.target_positions" multiple filterable allow-create default-first-option style="width: 100%" placeholder="如 Java后端开发" />
             </el-form-item>
@@ -48,9 +46,11 @@
               <el-select v-model="pref.cities" multiple filterable allow-create default-first-option style="width: 100%" placeholder="如 上海" />
             </el-form-item>
             <el-form-item label="薪资范围">
-              <el-input-number v-model="pref.salary_min" :min="0" :step="1000" controls-position="right" style="width: 45%" />
-              <span style="margin: 0 6px">~</span>
-              <el-input-number v-model="pref.salary_max" :min="0" :step="1000" controls-position="right" style="width: 45%" />
+              <div class="salary-range">
+                <el-input-number v-model="pref.salary_min" :min="0" :step="1000" controls-position="right" style="flex: 1" />
+                <span class="range-sep">~</span>
+                <el-input-number v-model="pref.salary_max" :min="0" :step="1000" controls-position="right" style="flex: 1" />
+              </div>
             </el-form-item>
             <el-form-item label="岗位类型">
               <el-checkbox-group v-model="pref.job_types">
@@ -63,40 +63,35 @@
               <el-select v-model="pref.keywords" multiple filterable allow-create default-first-option style="width: 100%" placeholder="如 Java" />
             </el-form-item>
           </el-form>
-        </el-card>
-      </el-col>
+        </section>
+      </div>
 
       <!-- 右列：画像 -->
-      <el-col :span="16">
-        <el-card v-if="profile">
-          <template #header>
-            <div class="card-header">
-              <span>👤 求职画像 <el-tag size="small" effect="plain">当前生效</el-tag></span>
-              <el-button type="primary" size="small" :loading="savingProfile" @click="handleSaveProfile">保存画像</el-button>
+      <div class="right-col">
+        <section v-if="profile" class="panel">
+          <header class="panel-header">
+            <span class="panel-title"><el-icon><User /></el-icon>求职画像 <el-tag size="small" effect="plain" type="success">当前生效</el-tag></span>
+            <el-button type="primary" size="small" :loading="savingProfile" @click="handleSaveProfile">保存画像</el-button>
+          </header>
+
+          <el-form label-position="top" class="profile-form">
+            <div class="form-grid">
+              <el-form-item label="姓名"><el-input v-model="profileForm.name" /></el-form-item>
+              <el-form-item label="求职意向"><el-input v-model="profileForm.title" /></el-form-item>
+              <el-form-item label="所在城市"><el-input v-model="profileForm.city" /></el-form-item>
+              <el-form-item label="电话"><el-input v-model="profileForm.phone" /></el-form-item>
+              <el-form-item label="邮箱"><el-input v-model="profileForm.email" /></el-form-item>
+              <el-form-item label="学历">
+                <el-select v-model="profileForm.education_level" style="width: 100%">
+                  <el-option v-for="e in ['博士', '硕士', '本科', '大专']" :key="e" :label="e" :value="e" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="学校"><el-input v-model="profileForm.school" /></el-form-item>
+              <el-form-item label="专业"><el-input v-model="profileForm.major" /></el-form-item>
+              <el-form-item label="工作年限">
+                <el-input-number v-model="profileForm.years_of_experience" :min="0" :max="40" controls-position="right" style="width: 100%" />
+              </el-form-item>
             </div>
-          </template>
-          <el-form label-width="100px" label-position="left">
-            <el-row :gutter="12">
-              <el-col :span="8"><el-form-item label="姓名"><el-input v-model="profileForm.name" /></el-form-item></el-col>
-              <el-col :span="8"><el-form-item label="求职意向"><el-input v-model="profileForm.title" /></el-form-item></el-col>
-              <el-col :span="8"><el-form-item label="所在城市"><el-input v-model="profileForm.city" /></el-form-item></el-col>
-              <el-col :span="8"><el-form-item label="电话"><el-input v-model="profileForm.phone" /></el-form-item></el-col>
-              <el-col :span="8"><el-form-item label="邮箱"><el-input v-model="profileForm.email" /></el-form-item></el-col>
-              <el-col :span="8">
-                <el-form-item label="学历">
-                  <el-select v-model="profileForm.education_level" style="width: 100%">
-                    <el-option v-for="e in ['博士', '硕士', '本科', '大专']" :key="e" :label="e" :value="e" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-              <el-col :span="8"><el-form-item label="学校"><el-input v-model="profileForm.school" /></el-form-item></el-col>
-              <el-col :span="8"><el-form-item label="专业"><el-input v-model="profileForm.major" /></el-form-item></el-col>
-              <el-col :span="8">
-                <el-form-item label="工作年限">
-                  <el-input-number v-model="profileForm.years_of_experience" :min="0" :max="40" controls-position="right" style="width: 100%" />
-                </el-form-item>
-              </el-col>
-            </el-row>
             <el-form-item label="个人简介">
               <el-input v-model="profileForm.summary" type="textarea" :rows="3" />
             </el-form-item>
@@ -104,7 +99,7 @@
 
           <el-divider content-position="left">技能</el-divider>
           <div class="skill-area">
-            <el-tag v-for="s in profile.skills" :key="s.id" closable size="large" style="margin: 4px" @close="handleDeleteSkill(s)">
+            <el-tag v-for="s in profile.skills" :key="s.id" closable size="large" class="skill-tag" @close="handleDeleteSkill(s)">
               {{ s.name }}
             </el-tag>
             <el-input v-model="newSkill" size="small" placeholder="添加技能，回车确认" style="width: 160px" @keyup.enter="handleAddSkill" />
@@ -114,19 +109,19 @@
           <el-timeline>
             <el-timeline-item v-for="e in profile.experiences" :key="e.id" :timestamp="expRange(e)">
               <div class="exp-item">
-                <b>{{ e.school_or_company }}</b>
-                <el-tag size="small" style="margin-left: 8px">{{ expTypeText(e.type) }}</el-tag>
-                <el-tag v-if="e.title" size="small" type="info" effect="plain" style="margin-left: 4px">{{ e.title }}</el-tag>
-                <el-button link type="danger" size="small" style="margin-left: 8px" @click="handleDeleteExp(e)">删除</el-button>
+                <b>{{ e.school_or_company || e.title }}</b>
+                <el-tag size="small" class="exp-tag">{{ expTypeText(e.type) }}</el-tag>
+                <el-tag v-if="e.title && e.title !== e.school_or_company" size="small" type="info" effect="plain" class="exp-tag">{{ e.title }}</el-tag>
+                <el-button link type="danger" size="small" class="exp-del" @click="handleDeleteExp(e)">删除</el-button>
                 <div class="exp-desc">{{ e.description }}</div>
               </div>
             </el-timeline-item>
           </el-timeline>
-          <el-button type="primary" plain size="small" @click="expDialogVisible = true">+ 添加经历</el-button>
+          <el-button type="primary" plain size="small" :icon="Plus" @click="expDialogVisible = true">添加经历</el-button>
 
-          <el-divider content-position="left">🤖 AI 简历修改建议</el-divider>
-          <el-button type="warning" plain size="small" :loading="suggesting" @click="handleSuggestions">
-            ✨ 生成简历修改建议
+          <el-divider content-position="left">AI 简历修改建议</el-divider>
+          <el-button type="warning" plain size="small" :icon="MagicStick" :loading="suggesting" @click="handleSuggestions">
+            生成简历修改建议
           </el-button>
           <div v-if="suggestions" class="suggestion-area">
             <el-alert
@@ -159,11 +154,13 @@
               </div>
             </template>
           </div>
-        </el-card>
+        </section>
 
-        <el-card v-else>
-          <template #header><span>👤 手动创建求职画像</span></template>
-          <el-form :model="profileForm" label-width="100px" style="max-width: 560px">
+        <section v-else class="panel">
+          <header class="panel-header">
+            <span class="panel-title"><el-icon><User /></el-icon>手动创建求职画像</span>
+          </header>
+          <el-form :model="profileForm" label-width="100px" class="manual-form">
             <el-form-item label="姓名"><el-input v-model="profileForm.name" /></el-form-item>
             <el-form-item label="求职意向"><el-input v-model="profileForm.title" /></el-form-item>
             <el-form-item label="城市"><el-input v-model="profileForm.city" /></el-form-item>
@@ -171,10 +168,9 @@
             <el-form-item label="邮箱"><el-input v-model="profileForm.email" /></el-form-item>
             <el-button type="primary" :loading="savingProfile" @click="handleCreateProfile">创建画像</el-button>
           </el-form>
-        </el-card>
-      </el-col>
-    </el-row>
-
+        </section>
+      </div>
+    </div>
 
     <!-- 添加经历弹窗 -->
     <el-dialog v-model="expDialogVisible" title="添加经历" width="520px">
@@ -210,7 +206,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document } from '@element-plus/icons-vue'
+import { Aim, Document, MagicStick, Plus, Upload, User } from '@element-plus/icons-vue'
 import {
   addExperience, addSkill, createProfile, deleteExperience, deleteResume, deleteSkill,
   getCurrentProfile, getPreference, getProfileSuggestions, getResumes, parseResume, savePreference, updateProfile, uploadResume,
@@ -395,72 +391,72 @@ onMounted(loadAll)
 </script>
 
 <style scoped>
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.resume-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 5fr) minmax(0, 11fr);
+  gap: 16px;
+  align-items: start;
 }
+@media (max-width: 1100px) {
+  .resume-grid { grid-template-columns: 1fr; }
+}
+.left-col, .right-col { display: flex; flex-direction: column; gap: 16px; }
+.panel {
+  background: var(--jf-surface);
+  border: 1px solid var(--jf-border);
+  border-radius: var(--jf-radius);
+  padding: 16px 20px;
+}
+
 .resume-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid #f0f2f5;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--jf-border);
 }
-.resume-item:last-child {
-  border-bottom: none;
+.resume-item:last-child { border-bottom: none; }
+.file-icon {
+  width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+  background: var(--jf-primary-softer); color: var(--jf-primary);
+  display: flex; align-items: center; justify-content: center;
 }
-.resume-info {
-  flex: 1;
-  min-width: 0;
+.resume-info { flex: 1; min-width: 0; }
+.resume-name { font-size: 14px; font-weight: 600; color: var(--jf-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resume-meta { font-size: 12px; color: var(--jf-muted); display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+
+.salary-range { display: flex; align-items: center; gap: 8px; width: 100%; }
+.range-sep { color: var(--jf-muted); }
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0 16px;
 }
-.resume-name {
-  font-size: 14px;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+@media (max-width: 900px) {
+  .form-grid { grid-template-columns: 1fr 1fr; }
 }
-.resume-meta {
-  font-size: 12px;
-  color: #909399;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-top: 2px;
-}
-.skill-area {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-}
-.exp-item {
-  font-size: 14px;
-}
-.exp-desc {
-  color: #606266;
-  font-size: 13px;
-  margin-top: 4px;
-}
+.profile-form :deep(.el-form-item) { margin-bottom: 14px; }
+.profile-form :deep(.el-form-item__label) { padding-bottom: 4px; }
+
+.skill-area { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.skill-tag { margin: 0; }
+
+.exp-item { font-size: 14px; }
+.exp-tag { margin-left: 6px; }
+.exp-del { margin-left: 6px; }
+.exp-desc { color: var(--jf-ink-soft); font-size: 13px; margin-top: 4px; line-height: 1.6; }
+
 .suggestion-area {
   margin-top: 12px;
-  background: #fdf6ec;
-  border-radius: 8px;
-  padding: 12px 16px;
+  background: var(--jf-accent-soft);
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  padding: 14px 16px;
 }
-.suggest-item {
-  margin-bottom: 10px;
-  font-size: 14px;
-}
-.suggest-item ul {
-  padding-left: 20px;
-  color: #606266;
-}
-.suggest-item p {
-  color: #606266;
-  margin-top: 4px;
-  line-height: 1.6;
-}
-</style>
+.suggest-item { margin-bottom: 10px; font-size: 14px; }
+.suggest-item ul { padding-left: 20px; color: var(--jf-ink-soft); }
+.suggest-item p { color: var(--jf-ink-soft); margin-top: 4px; line-height: 1.6; }
 
+.manual-form { max-width: 560px; }
+</style>

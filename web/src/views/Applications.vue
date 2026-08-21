@@ -1,15 +1,26 @@
-<template>
+﻿<template>
   <div>
-    <el-card>
-      <div class="kanban-summary">
-        <el-tag v-for="(label, key) in statusMap" :key="key" :type="statusTag(key)" effect="plain" size="large" style="margin: 2px">
-          {{ label }} {{ countByStatus(key) }}
-        </el-tag>
+    <section class="panel summary-panel">
+      <div class="summary-chips">
+        <div v-for="(label, key) in statusMap" :key="key" class="chip" :class="`chip-${key.toLowerCase()}`" @click="statusFilter = key === statusFilter ? '' : key">
+          <span class="chip-label">{{ label }}</span>
+          <b>{{ countByStatus(key) }}</b>
+        </div>
+        <div class="chip chip-all" :class="{ active: !statusFilter }" @click="statusFilter = ''">
+          <span class="chip-label">全部</span>
+          <b>{{ apps.length }}</b>
+        </div>
       </div>
-    </el-card>
+    </section>
 
-    <el-card style="margin-top: 16px">
-      <el-table :data="filteredApps" @row-click="openDetail" style="cursor: pointer">
+    <section class="panel list-panel">
+      <header class="panel-header">
+        <span class="panel-title"><el-icon><Promotion /></el-icon>投递记录</span>
+        <el-select v-model="statusFilter" placeholder="按状态筛选" clearable style="width: 150px" @change="statusFilter = $event || ''">
+          <el-option v-for="(label, key) in statusMap" :key="key" :label="label" :value="key" />
+        </el-select>
+      </header>
+      <el-table :data="filteredApps" @row-click="openDetail">
         <el-table-column label="职位" min-width="200">
           <template #default="{ row }">
             <div class="job-title">{{ row.job_title }}</div>
@@ -18,7 +29,7 @@
         </el-table-column>
         <el-table-column label="状态" width="110">
           <template #default="{ row }">
-            <el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+            <el-tag :type="statusTag(row.status)" size="small" effect="plain">{{ statusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="投递渠道" width="100">
@@ -36,7 +47,8 @@
           <template #default="{ row }">{{ row.updated_at.slice(0, 16).replace('T', ' ') }}</template>
         </el-table-column>
       </el-table>
-    </el-card>
+      <el-empty v-if="!filteredApps.length" description="暂无投递记录" :image-size="80" />
+    </section>
 
     <!-- 投递详情抽屉 -->
     <el-drawer v-model="drawerVisible" :title="`投递详情 - ${detail?.job_title || ''}`" size="480px">
@@ -61,9 +73,9 @@
             :type="s === 'OFFER' ? 'success' : s === 'REJECTED' || s === 'CLOSED' ? 'danger' : 'primary'"
             @click="handleTransition(s)"
           >
-            → {{ statusText(s) }}
+            {{ statusText(s) }}
           </el-button>
-          <div v-if="!allowedTransitions.length" style="color: #909399; font-size: 13px">当前状态为终态，无更多流转</div>
+          <div v-if="!allowedTransitions.length" class="text-muted end-tip">当前状态为终态，无更多流转</div>
         </div>
 
         <el-divider content-position="left">状态时间线</el-divider>
@@ -74,10 +86,10 @@
             :timestamp="e.created_at.slice(0, 16).replace('T', ' ')"
             :type="e.operator === 'SYSTEM' ? 'primary' : 'success'"
           >
-            <div>
+            <div class="event-item">
               <b>{{ statusText(e.to_status) }}</b>
-              <el-tag size="small" style="margin-left: 8px">{{ e.operator === 'SYSTEM' ? '系统' : '用户' }}</el-tag>
-              <div style="color: #909399; font-size: 12px; margin-top: 4px">{{ e.comment }}</div>
+              <el-tag size="small" class="event-tag">{{ e.operator === 'SYSTEM' ? '系统' : '用户' }}</el-tag>
+              <div class="text-muted event-comment">{{ e.comment }}</div>
             </div>
           </el-timeline-item>
         </el-timeline>
@@ -89,6 +101,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Promotion } from '@element-plus/icons-vue'
 import { getApplications, getApplication, updateApplicationStatus } from '@/api'
 
 const apps = ref([])
@@ -115,7 +128,9 @@ const TRANSITIONS = {
   CLOSED: [],
 }
 
-const filteredApps = computed(() => apps.value)
+const filteredApps = computed(() =>
+  statusFilter.value ? apps.value.filter((a) => a.status === statusFilter.value) : apps.value,
+)
 const allowedTransitions = computed(() => TRANSITIONS[detail.value?.status] || [])
 
 function statusText(s) {
@@ -148,22 +163,34 @@ onMounted(load)
 </script>
 
 <style scoped>
-.kanban-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+.panel {
+  background: var(--jf-surface);
+  border: 1px solid var(--jf-border);
+  border-radius: var(--jf-radius);
+  padding: 16px 20px;
 }
-.job-title {
-  font-weight: 600;
-}
-.company {
-  color: #909399;
-  font-size: 12px;
-}
-.transition-btns {
-  display: flex;
-  flex-wrap: wrap;
+.summary-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex;
+  align-items: baseline;
   gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--jf-border);
+  border-radius: 10px;
+  background: var(--jf-surface);
+  cursor: pointer;
+  transition: all 0.18s ease;
 }
+.chip:hover { border-color: var(--jf-primary); }
+.chip.active { border-color: var(--jf-primary); background: var(--jf-primary-softer); }
+.chip b { font-size: 16px; color: var(--jf-ink); }
+.chip-label { font-size: 13px; color: var(--jf-ink-soft); }
+.list-panel { margin-top: 16px; }
+.job-title { font-weight: 600; color: var(--jf-ink); }
+.company { color: var(--jf-muted); font-size: 12px; margin-top: 2px; }
+.transition-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.end-tip { font-size: 13px; }
+.event-item { font-size: 13px; }
+.event-tag { margin-left: 8px; }
+.event-comment { font-size: 12px; margin-top: 4px; }
 </style>
-

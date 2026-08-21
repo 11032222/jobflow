@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = ""
     LLM_BASE_URL: str = ""
     LLM_MODEL: str = ""
+    LLM_PROTOCOL: str = "openai-compatible"  # openai-compatible | anthropic | gemini
 
     # 服务
     API_HOST: str = "127.0.0.1"

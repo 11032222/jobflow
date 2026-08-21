@@ -13,7 +13,7 @@ git clone https://github.com/ufownl/auto-zhipin
 **2.** 安装依赖项
 
 ```bash
-cd auto-zhipin
+cd crawlers/boss-zhipin
 uv sync
 uv run playwright install
 ```

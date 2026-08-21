@@ -1,7 +1,7 @@
 @echo off
 REM Isolated Chrome with CDP 9222. Profile lives next to this script (do NOT use D:\ — that disk may not exist).
 set SCRIPT_DIR=%~dp0
-set PROFILE=%SCRIPT_DIR%chrome_profile
+set PROFILE=%SCRIPT_DIR%..\..\auto-zhipin\chrome_profile
 if not exist "%PROFILE%" mkdir "%PROFILE%"
 set CHROME=
 if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set CHROME=%ProgramFiles%\Google\Chrome\Application\chrome.exe

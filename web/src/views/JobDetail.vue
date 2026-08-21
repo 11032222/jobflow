@@ -1,46 +1,59 @@
 <template>
-  <div v-if="job">
-    <el-page-header content="岗位详情" @back="$router.back()" style="margin-bottom: 16px" />
+  <div v-if="job" class="detail-page">
+    <div class="back-bar">
+      <el-button text :icon="ArrowLeft" @click="$router.back()">返回</el-button>
+    </div>
 
-    <el-row :gutter="16">
-      <el-col :span="15">
-        <el-card>
+    <div class="detail-grid">
+      <!-- 左：岗位信息 -->
+      <div class="main-col">
+        <section class="panel job-card">
           <div class="job-head">
-            <div>
-              <h2>{{ job.title }}</h2>
+            <div class="job-title-block">
+              <h2 class="job-title">{{ job.title }}</h2>
               <div class="job-sub">
                 <el-tag size="small" effect="plain">{{ job.job_type }}</el-tag>
-                <span>{{ job.company_name }}</span>
-                <span>·</span>
+                <span class="company">{{ job.company_name }}</span>
+                <span class="dot">·</span>
                 <span>{{ job.city }}{{ job.district ? '·' + job.district : '' }}</span>
               </div>
             </div>
-            <div class="salary">{{ job.salary_text }}</div>
+            <div class="salary-text job-salary">{{ job.salary_text }}</div>
           </div>
 
-          <el-descriptions :column="3" border size="small" style="margin-top: 16px">
-            <el-descriptions-item label="学历要求">{{ job.education }}</el-descriptions-item>
-            <el-descriptions-item label="经验要求">{{ job.experience }}</el-descriptions-item>
-            <el-descriptions-item label="发布时间">{{ (job.publish_time || '').slice(0, 10) }}</el-descriptions-item>
-            <el-descriptions-item label="岗位标签" :span="3">
-              <el-tag v-for="t in job.tags" :key="t" size="small" type="info" effect="plain" style="margin: 2px">{{ t }}</el-tag>
-            </el-descriptions-item>
-          </el-descriptions>
+          <div class="meta-grid">
+            <div class="meta-item"><span class="meta-label">学历要求</span><b>{{ job.education }}</b></div>
+            <div class="meta-item"><span class="meta-label">经验要求</span><b>{{ job.experience }}</b></div>
+            <div class="meta-item"><span class="meta-label">发布时间</span><b>{{ (job.publish_time || '').slice(0, 10) }}</b></div>
+          </div>
+
+          <div class="tag-row">
+            <el-tag v-for="t in job.tags" :key="t" size="small" type="info" effect="plain">{{ t }}</el-tag>
+          </div>
+
+          <el-divider content-position="left">职位描述</el-divider>
+          <p class="desc-text">{{ job.description || job.responsibilities || '暂无职位描述' }}</p>
 
           <el-divider content-position="left">岗位职责</el-divider>
-          <p class="desc-text">{{ job.responsibilities }}</p>
+          <p class="desc-text">{{ job.responsibilities || (job.description ? '详见职位描述' : '暂无') }}</p>
 
           <el-divider content-position="left">任职要求</el-divider>
-          <p class="desc-text">{{ job.requirements }}</p>
+          <p class="desc-text">{{ job.requirements || (job.description ? '详见职位描述' : '暂无') }}</p>
+        </section>
+      </div>
 
-          <div class="job-actions" style="margin-top: 16px">
-            <el-button v-if="job.is_applied" disabled type="primary" size="large">已投递该岗位</el-button>
-            <el-button v-else type="primary" size="large" @click="handleApply">
-              📮 投递该岗位（发送简历邮件）
+      <!-- 右：操作 / 匹配 / 公司 -->
+      <div class="side-col">
+        <section class="panel action-card">
+          <div class="action-btns">
+            <el-button v-if="job.is_applied" disabled type="primary" size="large" class="apply-btn">已投递该岗位</el-button>
+            <el-button v-else type="primary" size="large" class="apply-btn" :icon="Promotion" @click="handleApply">
+              投递该岗位
             </el-button>
-            <el-button v-if="!job.is_favorite" size="large" @click="toggleFavorite">☆ 收藏</el-button>
-            <el-button v-else size="large" @click="toggleFavorite">★ 已收藏</el-button>
-            <el-button v-if="job.source_url" size="large" @click="openSource">查看原岗位</el-button>
+            <el-button :icon="Star" size="large" :type="job.is_favorite ? 'warning' : 'default'" @click="toggleFavorite">
+              {{ job.is_favorite ? '已收藏' : '收藏' }}
+            </el-button>
+            <el-button v-if="job.source_url" size="large" :icon="Link" @click="openSource">查看原岗位</el-button>
           </div>
           <el-alert
             v-if="job.is_applied"
@@ -48,71 +61,75 @@
             :closable="false"
             show-icon
             title="该岗位已创建投递记录，可前往「投递看板」查看状态和邮件发送情况。"
-            style="margin-top: 12px"
           />
-        </el-card>
+        </section>
 
-        <el-card style="margin-top: 16px">
-          <template #header>
-            <div class="card-header">
-              <span>🧠 匹配分析</span>
-              <el-button v-if="!job.match" type="primary" size="small" :loading="matching" @click="handleMatch">开始分析</el-button>
-            </div>
-          </template>
+        <section class="panel">
+          <header class="panel-header">
+            <span class="panel-title"><el-icon><DataAnalysis /></el-icon>匹配分析</span>
+            <el-button v-if="!job.match" type="primary" size="small" :loading="matching" @click="handleMatch">开始分析</el-button>
+          </header>
           <template v-if="job.match">
             <div class="match-head">
-              <el-progress type="circle" :percentage="Number(job.match.match_score || 0)" :width="110" :stroke-width="10">
+              <el-progress type="circle" :percentage="Number(job.match.match_score || 0)" :width="104" :stroke-width="9" :color="scoreColor(job.match.match_score)">
                 <template #default>
                   <div class="match-score">{{ job.match.match_score }}</div>
                   <div class="match-level">推荐等级 {{ job.match.recommend_level }}</div>
                 </template>
               </el-progress>
               <div class="match-reason">
-                <p style="font-weight: 600; color: #303133">推荐理由</p>
+                <p class="reason-label">推荐理由</p>
                 <p>{{ job.match.recommend_reason }}</p>
               </div>
             </div>
-            <el-row :gutter="12" style="margin-top: 16px">
-              <el-col :span="6">
-                <div class="dim-card"><div class="dim-score" style="color: #409eff">{{ job.match.skill_score ?? '-' }}</div><div class="dim-label">技能匹配</div></div>
-              </el-col>
-              <el-col :span="6">
-                <div class="dim-card"><div class="dim-score" style="color: #67c23a">{{ job.match.experience_score ?? '-' }}</div><div class="dim-label">经历匹配</div></div>
-              </el-col>
-              <el-col :span="6">
-                <div class="dim-card"><div class="dim-score" style="color: #e6a23c">{{ job.match.education_score ?? '-' }}</div><div class="dim-label">学历匹配</div></div>
-              </el-col>
-              <el-col :span="6">
-                <div class="dim-card"><div class="dim-score" style="color: #f56c6c">{{ job.match.preference_score ?? '-' }}</div><div class="dim-label">偏好匹配</div></div>
-              </el-col>
-            </el-row>
-            <el-tag type="info" effect="plain" size="small" style="margin-top: 12px">分析引擎：{{ job.match.model_used === 'llm' ? 'LLM Agent' : '规则引擎' }}</el-tag>
+            <div class="dims">
+              <div class="dim-row">
+                <span class="dim-label">技能匹配</span>
+                <el-progress :percentage="Number(job.match.skill_score || 0)" :stroke-width="8" color="#0d9488" />
+              </div>
+              <div class="dim-row">
+                <span class="dim-label">经历匹配</span>
+                <el-progress :percentage="Number(job.match.experience_score || 0)" :stroke-width="8" color="#16a34a" />
+              </div>
+              <div class="dim-row">
+                <span class="dim-label">学历匹配</span>
+                <el-progress :percentage="Number(job.match.education_score || 0)" :stroke-width="8" color="#d97706" />
+              </div>
+              <div class="dim-row">
+                <span class="dim-label">偏好匹配</span>
+                <el-progress :percentage="Number(job.match.preference_score || 0)" :stroke-width="8" color="#dc2626" />
+              </div>
+            </div>
+            <el-tag type="info" effect="plain" size="small" class="engine-tag">
+              分析引擎：{{ job.match.model_used === 'llm' ? 'LLM Agent' : '规则引擎' }}
+            </el-tag>
           </template>
-          <el-empty v-else description="点击「开始分析」查看匹配结果" :image-size="80" />
-        </el-card>
-      </el-col>
+          <el-empty v-else description="点击「开始分析」查看匹配结果" :image-size="70" />
+        </section>
 
-      <el-col :span="9">
-        <el-card>
-          <template #header><span>🏢 公司信息</span></template>
+        <section class="panel">
+          <header class="panel-header">
+            <span class="panel-title"><el-icon><OfficeBuilding /></el-icon>公司信息</span>
+          </header>
           <div class="company-head">
-            <el-avatar :size="48" shape="square">{{ job.company_name?.[0] }}</el-avatar>
+            <el-avatar :size="44" shape="square" class="company-avatar">{{ job.company_name?.[0] }}</el-avatar>
             <div>
               <div class="company-name">{{ job.company_name }}</div>
               <div class="company-meta">{{ job.industry || '-' }} · {{ job.company_type || '-' }}</div>
             </div>
           </div>
-          <el-descriptions :column="1" size="small" style="margin-top: 12px">
-            <el-descriptions-item label="公司规模">{{ company.scale || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="所在城市">{{ company.address || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="风险等级">
+          <div class="company-rows">
+            <div class="company-row"><span>公司规模</span><b>{{ company.scale || '-' }}</b></div>
+            <div class="company-row"><span>所在城市</span><b>{{ company.address || '-' }}</b></div>
+            <div class="company-row">
+              <span>风险等级</span>
               <el-tag :type="riskType(company.risk_level)" size="small">{{ riskText(company.risk_level) }}</el-tag>
-            </el-descriptions-item>
-          </el-descriptions>
-          <p class="desc-text" style="margin-top: 12px">{{ company.description || '暂无公司介绍' }}</p>
-        </el-card>
-      </el-col>
-    </el-row>
+            </div>
+          </div>
+          <p class="desc-text company-desc">{{ company.description || '暂无公司介绍' }}</p>
+        </section>
+      </div>
+    </div>
 
     <!-- 投递确认弹窗 -->
     <el-dialog v-model="applyDialogVisible" title="确认投递" width="520px">
@@ -142,6 +159,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { ArrowLeft, DataAnalysis, Link, OfficeBuilding, Promotion, Star } from '@element-plus/icons-vue'
 import {
   addFavorite, createApplication, getCompany, getJob, getResumes, matchJob, removeFavorite, submitApplication,
 } from '@/api'
@@ -170,6 +188,12 @@ function riskType(level) {
 }
 function riskText(level) {
   return { NORMAL: '正常', WARNING: '谨慎', HIGH: '高风险' }[level] || level
+}
+function scoreColor(score) {
+  if (score >= 80) return '#16a34a'
+  if (score >= 60) return '#0d9488'
+  if (score >= 40) return '#d97706'
+  return '#dc2626'
 }
 
 async function toggleFavorite() {
@@ -234,85 +258,77 @@ onMounted(load)
 </script>
 
 <style scoped>
-.job-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+.back-bar { margin-bottom: 12px; }
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 16px;
+  align-items: start;
 }
-.job-sub {
+@media (max-width: 1100px) {
+  .detail-grid { grid-template-columns: 1fr; }
+}
+.panel {
+  background: var(--jf-surface);
+  border: 1px solid var(--jf-border);
+  border-radius: var(--jf-radius);
+  padding: 18px 20px;
+}
+.main-col, .side-col { display: flex; flex-direction: column; gap: 16px; }
+
+.job-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.job-title { font-size: 22px; font-weight: 800; color: var(--jf-ink); line-height: 1.3; }
+.job-sub { display: flex; gap: 8px; align-items: center; color: var(--jf-ink-soft); margin-top: 10px; font-size: 14px; flex-wrap: wrap; }
+.job-sub .company { font-weight: 600; color: var(--jf-ink); }
+.dot { color: var(--jf-border-strong); }
+.job-salary { font-size: 24px; white-space: nowrap; }
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 18px;
+}
+.meta-item {
+  background: var(--jf-primary-softer);
+  border: 1px solid var(--jf-border);
+  border-radius: 10px;
+  padding: 12px 14px;
   display: flex;
-  gap: 8px;
-  align-items: center;
-  color: #606266;
-  margin-top: 8px;
-  font-size: 14px;
+  flex-direction: column;
+  gap: 4px;
 }
-.salary {
-  color: #f56c6c;
-  font-size: 22px;
-  font-weight: 700;
-  white-space: nowrap;
+.meta-label { font-size: 12px; color: var(--jf-muted); }
+.meta-item b { font-size: 14px; color: var(--jf-ink); }
+
+.tag-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+.desc-text { color: #334155; line-height: 1.8; font-size: 14px; }
+
+.action-btns { display: flex; flex-direction: column; gap: 10px; }
+.action-btns .apply-btn { width: 100%; margin-left: 0; }
+.action-btns .el-button:not(.apply-btn) { margin-left: 0; }
+
+.match-head { display: flex; gap: 16px; align-items: center; }
+.match-score { font-size: 20px; font-weight: 800; color: var(--jf-ink); }
+.match-level { font-size: 11px; color: var(--jf-muted); }
+.match-reason { flex: 1; min-width: 0; }
+.reason-label { font-weight: 600; color: var(--jf-ink); margin-bottom: 4px; font-size: 13px; }
+.match-reason p:last-child { color: var(--jf-ink-soft); font-size: 13px; line-height: 1.7; }
+.dims { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.dim-row { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 10px; }
+.dim-label { font-size: 12px; color: var(--jf-ink-soft); }
+.engine-tag { margin-top: 12px; }
+
+.company-avatar { background: var(--jf-primary-softer); color: var(--jf-primary-dark); font-weight: 700; }
+.company-head { display: flex; gap: 12px; align-items: center; }
+.company-name { font-size: 16px; font-weight: 700; color: var(--jf-ink); }
+.company-meta { font-size: 12px; color: var(--jf-muted); margin-top: 2px; }
+.company-rows { margin-top: 12px; border-top: 1px solid var(--jf-border); }
+.company-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--jf-border);
+  font-size: 13px;
 }
-.desc-text {
-  color: #303133;
-  line-height: 1.8;
-  font-size: 14px;
-}
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.match-head {
-  display: flex;
-  gap: 24px;
-  align-items: center;
-}
-.match-score {
-  font-size: 24px;
-  font-weight: 700;
-  color: #303133;
-}
-.match-level {
-  font-size: 12px;
-  color: #909399;
-}
-.match-reason {
-  flex: 1;
-  color: #606266;
-  font-size: 14px;
-  line-height: 1.8;
-}
-.dim-card {
-  text-align: center;
-  padding: 12px;
-  background: #f7fafc;
-  border-radius: 8px;
-}
-.dim-score {
-  font-size: 22px;
-  font-weight: 700;
-}
-.dim-label {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 4px;
-}
-.company-head {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-.company-name {
-  font-size: 16px;
-  font-weight: 600;
-}
-.company-meta {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 2px;
-}
+.company-row span { color: var(--jf-muted); }
+.company-desc { margin-top: 10px; }
 </style>
-
-

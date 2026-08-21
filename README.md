@@ -1,11 +1,18 @@
 # JobFlow 智能求职辅助系统
 
-前后端分离的桌面端求职辅助系统：简历 → 画像 → 岗位发现 → 匹配推荐 → 邮箱投递 → 状态跟踪 → 面试管理。
+前后端分离的桌面端求职辅助系统：简历 → 求职画像 → 岗位发现 → 匹配推荐 → 邮件投递 → 状态跟踪 → 面试管理。
 
-- **前端**：Vue3 + Element Plus + Pinia + Electron
-- **后端**：FastAPI + SQLAlchemy 2.0 + JWT
-- **数据库**：MySQL（未配置时自动回退 SQLite 开发库）
+- **前端**：Vue3 + Element Plus + Pinia + Electron（Vite 开发端口 5174）
+- **后端**：FastAPI + SQLAlchemy 2.0 + JWT（端口 8000）
+- **数据库**：MySQL（未配置时自动回退 SQLite 开发库 `api/jobflow_dev.db`）
 - **投递演示**：SMTP 邮件投递（投递简历邮件发送到演示收件箱）
+
+## 当前版本 v1.1.0
+
+- 接入 **BOSS 直聘** 采集（HTTP 接口优先，失败自动回退 CDP 调试浏览器）
+- 支持 **智联招聘 + BOSS 直聘 + 模拟数据** 多平台岗位采集
+- 跨平台按「公司 + 职位 + 城市」去重；同一来源按 `(source, source_job_id)` 去重
+- 可按求职画像/偏好（关键词、城市、薪资区间）一键从多平台同时采集
 
 ## 目录结构
 
@@ -13,45 +20,47 @@
 .
 ├── api/                 # FastAPI 后端
 │   ├── app/
-│   │   ├── core/        # 配置(.env)、数据库、JWT、依赖
-│   │   ├── models/      # 17 张 ORM 表
+│   │   ├── core/        # 配置(.env)、数据库、JWT
+│   │   ├── models/      # ORM 表
 │   │   ├── schemas/     # Pydantic 模型
 │   │   ├── api/v1/      # REST 路由
 │   │   ├── agents/      # LLM Service / Resume Agent / Matching Agent
-│   │   ├── collectors/  # 平台适配器（zhaopin / mock / 预留）
-│   │   ├── services/    # 邮件投递 / 状态机 / 匹配引擎 / 采集导入 / 简历解析
-│   │   └── main.py      # 应用入口
-│   ├── scripts/seed.py  # 模拟数据填充脚本
+│   │   ├── collectors/  # 平台适配器（zhaopin / zhipin / mock）
+│   │   └── services/    # 邮件投递 / 状态机 / 匹配引擎 / 采集导入 / 简历解析
+│   ├── scripts/seed.py  # 模拟数据填充脚本（演示账号 admin / 123456）
 │   └── .env             # 环境变量（不提交）
-└── web/                 # Vue3 + Electron 前端
-    ├── electron/        # Electron 主进程
-    └── src/
-        ├── api/         # axios 封装
-        ├── router/      # 页面路由
-        ├── stores/      # Pinia
-        └── views/       # 10 个业务页面
+├── web/                 # Vue3 + Electron 前端
+│   ├── electron/        # Electron 主进程
+│   └── src/             # 页面 / 路由 / 状态 / API 封装
+├── crawlers/boss-zhipin/ # BOSS 直聘爬虫源码
+└── auto-zhipin/          # BOSS 直聘运行时（.venv / chrome_profile）
 ```
 
 ## 快速启动
+
+### 0. 一键脚本（推荐）
+
+项目根目录双击即可，无需敲命令：
+
+- `start-jobflow.bat`：启动后端 + 前端 + 桌面窗口（已在运行的服务会自动跳过）
+- `stop-jobflow.bat`：一键关闭所有 JobFlow 服务与窗口
 
 ### 1. 后端
 
 ```bash
 cd api
-pip install -r requirements.txt        # 安装依赖
-cp .env.example .env                    # 首次复制环境变量，填入 MySQL 密码 / SMTP 授权码
-python scripts/seed.py                  # 建表 + 填充模拟数据（演示账号 admin / 123456）
-uvicorn app.main:app --port 8000        # 启动后端
+pip install -r requirements.txt        # 安装依赖（含 websockets）
+uvicorn app.main:app --port 8000       # 启动后端
 ```
 
-> 若 MySQL 连不上，系统会自动回退到 `api/jobflow_dev.db`（SQLite），无需任何额外配置即可跑通演示。
+> 若 MySQL 连不上，系统会自动回退到 `api/jobflow_dev.db`（SQLite），无需额外配置即可跑通演示；启动时会自动补齐新增表列。
 
 ### 2. 前端（浏览器模式）
 
 ```bash
 cd web
 npm install
-npm run dev                             # http://localhost:5173
+npm run dev                             # http://localhost:5174
 ```
 
 ### 3. 桌面端（Electron）
@@ -60,7 +69,7 @@ npm run dev                             # http://localhost:5173
 
 ```bash
 cd web
-npm run dev                             # 终端 1：Vite
+npm run dev                             # 终端 1：Vite（5174）
 npm run electron:dev                    # 终端 2：Electron 窗口（开发模式）
 ```
 
@@ -71,8 +80,6 @@ cd web
 npm run electron:build                  # 生成 release/ 下的安装程序
 ```
 
-> 首次使用若 Electron 二进制未下载，执行：`cd web/node_modules/electron && set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ && node install.js`
-
 ## 演示账号
 
 | 账号 | 密码 |
@@ -81,60 +88,40 @@ npm run electron:build                  # 生成 release/ 下的安装程序
 
 ## 核心功能
 
-- **简历管理**：上传 PDF/DOCX/TXT/图片简历；一键**解析**（Resume Agent：LLM 或规则引擎提取基本信息/技能/教育/工作/项目经历）；维护求职画像与求职偏好
-- **平台岗位采集**：`岗位库 → 从平台导入岗位`，通过智联 Adapter（SSR 解析）异步采集真实岗位，自动标准化、`(source, source_job_id)` 去重、`dedup_hash` 跨源去重，任务进度可在岗位库查看
-- **岗位库**：关键词/城市/学历/经验/类型多条件筛选，来源可追溯（智联真实岗位）
+- **简历管理**：上传 PDF / DOCX / TXT 简历；一键**解析**（Resume Agent：LLM 或规则引擎提取基本信息、技能、教育/工作经历）；维护求职画像与求职偏好
+- **多平台岗位采集**：岗位库 → 从平台导入岗位；智联 Adapter（SSR 解析）+ BOSS Adapter（HTTP / CDP）+ 模拟数据；自动标准化、去重，任务进度可在岗位库查看
+- **岗位库**：关键词/城市/学历/经验/类型/平台多条件筛选，来源可追溯，收藏、详情
 - **智能推荐**：基于画像与偏好的多维度匹配（技能/经历/学历/偏好），输出匹配分、推荐等级（S/A/B/C/D）与推荐理由；配置 LLM 后由 **Matching Agent** 生成可解释推荐理由与优劣势
-- **投递看板**：状态机 PENDING → SUBMITTING → SUBMITTED → WAITING → TEST/INTERVIEW/OFFER/REJECTED/CLOSED，全程事件审计；邮件投递后可在收件箱验证
+- **投递看板**：状态机 PENDING → SUBMITTING → SUBMITTED → WAITING → TEST/INTERVIEW/OFFER/REJECTED/CLOSED，全程事件记录；邮件投递后可在演示收件箱验证
 - **面试管理**：面试日程、轮次、状态、反馈
 - **任务中心**：Agent 任务状态展示（RESUME_PARSE / JOB_SEARCH / JOB_MATCH / COMPANY_ANALYZE / JOB_APPLY）
+- **大模型配置**：设置页填写 OpenAI 兼容服务（通义千问 / 智谱 GLM / DeepSeek / OpenAI 预设），支持测试连接；未配置时自动走规则引擎
 
-## LLM Agent（可选增强）
-
-### 方式一：设置页配置（推荐，每个账号独立）
-
-在 **设置 → 模型服务** 中填写：协议（OpenAI 兼容）、Base URL、API Key、模型名称，可一键选择通义千问 / 智谱 GLM / DeepSeek / OpenAI 预设，支持**测试连接**。配置保存在数据库 `user_llm_configs` 表，密钥仅显示掩码。
-
-### 方式二：全局 .env 配置
-
-```ini
-LLM_API_KEY=sk-xxx
-LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1   # 通义千问 OpenAI 兼容
-LLM_MODEL=qwen-plus
-```
-
-未配置任何模型时自动走规则引擎，功能完整可用。
-
-| Agent | 能力 | 无 Key fallback |
-|---|---|---|
-| Resume Agent | 简历文本 → 结构化画像；**简历修改建议**（个人简介/技能补强/经历优化/突出亮点） | 正则规则提取（姓名/电话/邮箱/学校/技能） |
-| Matching Agent | 生成可解释推荐理由、优势、不足 | 规则引擎四维评分 + 模板理由 |
-
-## 平台采集（P2）
+## 平台采集说明
 
 - Adapter 架构（`collectors/`）：`search_jobs()` / `get_company_info()` 统一接口，新增平台只需实现 Adapter 并在 `registry.py` 注册
-- 智联 Adapter：解析 `sou.zhaopin.com` SSR 页面的 `__INITIAL_STATE__`，支持关键词 + 城市（北京/上海/深圳/杭州等）
-- 岗位库支持**按平台筛选**（智联/模拟），每列显示来源标识；导入岗位可下拉选择平台
-- 采集任务异步执行，`job_sources` 表记录每次采集的关键词/城市/发现数/导入数/状态
+- **智联**：解析 `sou.zhaopin.com` SSR 页面的 `__INITIAL_STATE__`，支持关键词 + 城市（北京/上海/深圳/杭州等）
+- **BOSS 直聘**：`zhipin.py` HTTP 公开接口优先，失败回退 `zhipin_cdp.py` CDP 采集（复用 `crawlers/boss-zhipin/boss_cdp.py` 思路）；需先点击岗位库的「启动调试 Chrome」（9222 调试端口）并在弹出窗口登录 BOSS 直聘，也可双击 `crawlers/boss-zhipin/start_chrome.bat`
+- 采集任务异步执行，`job_sources` 表记录每次采集的关键词/城市/薪资/页数/发现数/导入数/状态
 
-## 邮件投递演示（如何证明投递功能做好了）
+## 邮件投递演示
 
-设置页 / `api/.env` 配置 `MAIL_MODE=smtp` 与 QQ 邮箱授权码后：
+在设置页 / `api/.env` 配置 `MAIL_MODE=smtp` 与 QQ 邮箱授权码后：
 
 1. 在岗位详情点击 **投递** → 选择简历 → 确认
 2. 系统后台生成求职邮件（岗位信息 + 求职信 + 简历 PDF 附件）并通过 SMTP 发送
 3. 投递状态自动流转 `PENDING → SUBMITTING → SUBMITTED`，事件写入 `application_events`
-4. 打开你的演示收件箱（`.env` 的 `DEMO_INBOX`），即可看到真实投递邮件与简历附件
+4. 打开演示收件箱（`.env` 的 `DEMO_INBOX`）即可看到真实投递邮件与简历附件
 5. 后续状态（笔试/面试/Offer/拒绝）在投递看板手动流转，形成完整跟踪闭环
 
-> 安全提醒：SMTP 授权码等价于邮箱发信权限，仅写入 `.env`（已加入 `.gitignore`），切勿提交到 git。
+> 安全提醒：SMTP 授权码等同于邮箱发信权限，仅写入 `.env`（已加入 `.gitignore`），切勿提交到 git。
 
 ## 配置项说明（api/.env）
 
 | 变量 | 说明 |
 |---|---|
-| DB_HOST/PORT/USER/PASSWORD/NAME | MySQL 连接（密码请填正式值） |
-| MAIL_MODE | `smtp`(真实邮箱) / `mailhog`(本地模拟) / `mock`(纯模拟) |
+| DB_HOST/PORT/USER/PASSWORD/NAME | MySQL 连接（密码请填正确值） |
+| MAIL_MODE | `smtp`(真实邮件) / `mailhog`(本地模拟) / `mock`(纯模拟) |
 | SMTP_HOST/PORT/USER/PASSWORD | SMTP 服务器与授权码 |
 | DEMO_INBOX | 所有投递邮件的收件箱 |
 | LLM_API_KEY/BASE_URL/MODEL | 可选：配置后匹配/解析走 LLM，留空走规则引擎 |

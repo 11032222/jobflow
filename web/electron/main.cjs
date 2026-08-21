@@ -1,7 +1,7 @@
-const { app, BrowserWindow } = require('electron')
+﻿const { app, BrowserWindow } = require('electron')
 const path = require('path')
 
-const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173'
+const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5174'
 const isDev = process.env.JOBFLOW_DEV === '1' || process.env.NODE_ENV !== 'production'
 
 function createWindow() {

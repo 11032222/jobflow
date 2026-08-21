@@ -1,5 +1,6 @@
-"""简历解析服务：提取文本 → Resume Agent → 生成结构化画像。"""
+﻿"""简历解析服务：提取文本 → Resume Agent → 生成结构化画像。"""
 import logging
+from datetime import datetime
 from pathlib import Path
 
 from app.agents.resume_agent import resume_agent
@@ -33,6 +34,19 @@ def extract_text(file_path: str, file_type: str) -> str:
     # 图片暂不支持 OCR，返回空
     return ""
 
+
+def _to_date(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    s = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%Y-%m", "%Y/%m/%d", "%Y/%m"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
+    return None
 
 def _create_profile_from_result(db, user_id: int, resume: Resume, profile_data: dict) -> CandidateProfile:
     """将 Agent 结构化结果写入画像（先取消旧当前画像）。"""
@@ -71,7 +85,7 @@ def _create_profile_from_result(db, user_id: int, resume: Resume, profile_data: 
                 )
             )
     for idx, exp in enumerate(profile_data.get("experiences") or []):
-        if not isinstance(exp, dict) or not exp.get("school_or_company"):
+        if not isinstance(exp, dict) or not (exp.get("school_or_company") or exp.get("title")):
             continue
         db.add(
             ProfileExperience(
@@ -81,8 +95,8 @@ def _create_profile_from_result(db, user_id: int, resume: Resume, profile_data: 
                 degree=exp.get("degree"),
                 major=exp.get("major"),
                 title=exp.get("title"),
-                start_date=exp.get("start_date"),
-                end_date=exp.get("end_date"),
+                start_date=_to_date(exp.get("start_date")),
+                end_date=_to_date(exp.get("end_date")),
                 description=exp.get("description"),
                 sort_order=idx,
             )

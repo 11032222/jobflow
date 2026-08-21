@@ -1,72 +1,53 @@
-<template>
+﻿<template>
   <div>
-    <el-row :gutter="16">
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-value" style="color: #409eff">{{ stats.jobTotal }}</div>
-          <div class="stat-label">岗位总数</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-value" style="color: #e6a23c">{{ stats.applying }}</div>
-          <div class="stat-label">投递中</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-value" style="color: #67c23a">{{ stats.interviewing }}</div>
-          <div class="stat-label">面试中</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-value" style="color: #f56c6c">{{ stats.offers }}</div>
-          <div class="stat-label">拿到 Offer</div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="stat-grid">
+      <div class="stat-card hoverable" v-for="s in statCards" :key="s.label">
+        <span class="icon-chip" :style="{ background: s.soft, color: s.color }"><el-icon :size="20"><component :is="s.icon" /></el-icon></span>
+        <div class="stat-body">
+          <div class="stat-value" :style="{ color: s.color }">{{ s.value }}</div>
+          <div class="stat-label">{{ s.label }}</div>
+        </div>
+      </div>
+    </div>
 
-    <el-row :gutter="16" style="margin-top: 16px">
-      <el-col :span="14">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>🔥 智能推荐</span>
-              <el-link type="primary" @click="$router.push('/recommendations')">查看全部</el-link>
+    <div class="dash-grid">
+      <section class="panel">
+        <header class="panel-header">
+          <span class="panel-title"><el-icon><TrendCharts /></el-icon>智能推荐</span>
+          <el-link type="primary" :underline="false" @click="$router.push('/recommendations')">查看全部<el-icon class="link-icon"><Right /></el-icon></el-link>
+        </header>
+        <div v-if="recommendations.length" class="rec-list">
+          <div v-for="item in recommendations" :key="item.id" class="rec-row hoverable" @click="goDetail(item)">
+            <div class="rec-main">
+              <div class="rec-title">{{ item.title }}</div>
+              <div class="rec-meta">
+                <span>{{ item.company_name }}</span>
+                <span class="dot">·</span>
+                <span>{{ item.city }}</span>
+                <span class="dot">·</span>
+                <span class="salary-text">{{ item.salary_text }}</span>
+              </div>
             </div>
-          </template>
-          <el-table :data="recommendations" size="small" @row-click="goDetail">
-            <el-table-column prop="title" label="职位" min-width="170" show-overflow-tooltip />
-            <el-table-column label="公司" min-width="100" show-overflow-tooltip>
-              <template #default="{ row }">{{ row.company_name }}</template>
-            </el-table-column>
-            <el-table-column label="城市" width="70">
-              <template #default="{ row }">{{ row.city }}</template>
-            </el-table-column>
-            <el-table-column label="薪资" width="100">
-              <template #default="{ row }">{{ row.salary_text }}</template>
-            </el-table-column>
-            <el-table-column label="匹配" width="100">
-              <template #default="{ row }">
-                <el-tag v-if="row.match" :type="levelType(row.match.recommend_level)" size="small">
-                  {{ row.match.match_score }}分 {{ row.match.recommend_level }}
-                </el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-          <el-empty v-if="!recommendations.length" description="暂无推荐，请先完善简历画像" :image-size="80" />
-        </el-card>
-      </el-col>
+            <div class="rec-match">
+              <span v-if="item.match" class="score-badge" :class="levelClass(item.match.recommend_level)">
+                {{ item.match.match_score }}<small>分</small>
+              </span>
+              <el-tag v-if="item.match" :type="levelType(item.match.recommend_level)" size="small" effect="plain">
+                {{ item.match.recommend_level }}
+              </el-tag>
+              <el-button v-else link type="primary" size="small">查看</el-button>
+            </div>
+          </div>
+        </div>
+        <el-empty v-else description="暂无推荐，请先完善简历画像" :image-size="80" />
+      </section>
 
-      <el-col :span="10">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>📬 最近投递</span>
-              <el-link type="primary" @click="$router.push('/applications')">投递看板</el-link>
-            </div>
-          </template>
+      <div class="right-col">
+        <section class="panel">
+          <header class="panel-header">
+            <span class="panel-title"><el-icon><Message /></el-icon>最近投递</span>
+            <el-link type="primary" :underline="false" @click="$router.push('/applications')">投递看板</el-link>
+          </header>
           <el-timeline v-if="applications.length">
             <el-timeline-item
               v-for="app in applications.slice(0, 6)"
@@ -75,45 +56,46 @@
               :color="statusColor(app.status)"
             >
               <div class="timeline-body">
-                <b>{{ app.job_title }}</b>
-                <span class="timeline-company">{{ app.company_name }}</span>
-                <el-tag size="small" :type="statusTagType(app.status)">{{ statusText(app.status) }}</el-tag>
+                <b class="tl-title">{{ app.job_title }}</b>
+                <span class="text-muted tl-company">{{ app.company_name }}</span>
+                <el-tag size="small" :type="statusTagType(app.status)" effect="plain">{{ statusText(app.status) }}</el-tag>
               </div>
             </el-timeline-item>
           </el-timeline>
-          <el-empty v-else description="暂无投递记录" :image-size="80" />
-        </el-card>
+          <el-empty v-else description="暂无投递记录" :image-size="70" />
+        </section>
 
-        <el-card style="margin-top: 16px">
-          <template #header>
-            <div class="card-header">
-              <span>👤 我的画像</span>
-              <el-link type="primary" @click="$router.push('/resumes')">管理</el-link>
-            </div>
-          </template>
+        <section class="panel">
+          <header class="panel-header">
+            <span class="panel-title"><el-icon><User /></el-icon>我的画像</span>
+            <el-link type="primary" :underline="false" @click="$router.push('/resumes')">管理</el-link>
+          </header>
           <template v-if="profile">
             <div class="profile-line">
               <b>{{ profile.name }}</b>
-              <el-tag size="small" style="margin-left: 8px">{{ profile.title }}</el-tag>
+              <el-tag v-if="profile.title" size="small" effect="plain" class="profile-tag">{{ profile.title }}</el-tag>
             </div>
             <div class="profile-meta">
-              <span>{{ profile.education_level }} · {{ profile.school }} · {{ profile.major }}</span>
-              <span>{{ profile.city }} · {{ profile.years_of_experience || 0 }}年经验</span>
+              <span v-if="profile.education_level">{{ profile.education_level }}</span>
+              <span v-if="profile.school">{{ profile.school }}</span>
+              <span v-if="profile.city">{{ profile.city }}</span>
+              <span v-if="profile.years_of_experience != null">{{ profile.years_of_experience }} 年经验</span>
             </div>
-            <el-progress :percentage="profileProgress" :stroke-width="10" style="margin-top: 8px" />
-            <div style="margin-top: 4px; color: #909399; font-size: 12px">画像完整度 {{ profileProgress }}%</div>
+            <el-progress :percentage="profileProgress" :stroke-width="10" class="profile-progress" />
+            <div class="progress-caption">画像完整度 {{ profileProgress }}%</div>
           </template>
-          <el-empty v-else description="尚未建立求职画像" :image-size="80">
+          <el-empty v-else description="尚未建立求职画像" :image-size="70">
             <el-button type="primary" size="small" @click="$router.push('/resumes')">去完善</el-button>
           </el-empty>
-        </el-card>
-      </el-col>
-    </el-row>
+        </section>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { Briefcase, Calendar, Message, Promotion, Right, TrendCharts, Trophy, User } from '@element-plus/icons-vue'
 import { getApplications, getCurrentProfile, getJobs, getRecommendations } from '@/api'
 
 const recommendations = ref([])
@@ -127,6 +109,13 @@ const stats = computed(() => {
   const offers = applications.value.filter((a) => a.status === 'OFFER').length
   return { jobTotal: jobTotal.value, applying, interviewing, offers }
 })
+
+const statCards = computed(() => [
+  { label: '岗位总数', value: stats.value.jobTotal, icon: Briefcase, color: '#0d9488', soft: '#ccfbf1' },
+  { label: '投递中', value: stats.value.applying, icon: Promotion, color: '#ea580c', soft: '#ffedd5' },
+  { label: '面试中', value: stats.value.interviewing, icon: Calendar, color: '#d97706', soft: '#fef3c7' },
+  { label: '拿到 Offer', value: stats.value.offers, icon: Trophy, color: '#16a34a', soft: '#dcfce7' },
+])
 
 const profileProgress = computed(() => {
   if (!profile.value) return 0
@@ -142,13 +131,16 @@ function statusText(s) {
   return { PENDING: '待投递', SUBMITTING: '投递中', SUBMITTED: '已投递', FAILED: '投递失败', WAITING: '待反馈', TEST: '笔试', INTERVIEW: '面试', OFFER: 'Offer', REJECTED: '未通过', CLOSED: '已关闭' }[s] || s
 }
 function statusTagType(s) {
-  return { INTERVIEW: 'warning', TEST: 'warning', OFFER: 'success', REJECTED: 'danger', CLOSED: 'info', SUBMITTED: 'success', WAITING: 'primary' }[s] || 'info'
+  return { INTERVIEW: 'warning', TEST: 'warning', OFFER: 'success', REJECTED: 'danger', CLOSED: 'info', SUBMITTED: 'success', WAITING: 'primary', FAILED: 'danger' }[s] || 'info'
 }
 function statusColor(s) {
-  return { INTERVIEW: '#e6a23c', TEST: '#e6a23c', OFFER: '#67c23a', REJECTED: '#f56c6c', SUBMITTED: '#67c23a' }[s] || '#c0c4cc'
+  return { INTERVIEW: '#d97706', TEST: '#d97706', OFFER: '#16a34a', REJECTED: '#dc2626', SUBMITTED: '#16a34a' }[s] || '#94a3b8'
 }
 function levelType(level) {
   return { S: 'danger', A: 'warning', B: 'primary', C: 'info', D: 'info' }[level] || 'info'
+}
+function levelClass(level) {
+  return { S: 'level-s', A: 'level-a', B: 'level-b', C: 'level-c', D: 'level-d' }[level] || 'level-d'
 }
 
 function goDetail(row) {
@@ -162,7 +154,7 @@ onMounted(async () => {
     applications.value = appRes
   } catch { /* 忽略 */ }
   try {
-    recommendations.value = (await getRecommendations({ limit: 6 })).items
+    recommendations.value = (await getRecommendations({ limit: 5 })).items
   } catch { /* 忽略 */ }
   try {
     profile.value = await getCurrentProfile()
@@ -171,43 +163,79 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
 .stat-card {
-  text-align: center;
-}
-.stat-value {
-  font-size: 32px;
-  font-weight: 700;
-}
-.stat-label {
-  color: #909399;
-  margin-top: 4px;
-  font-size: 14px;
-}
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.timeline-body {
+  background: var(--jf-surface);
+  border: 1px solid var(--jf-border);
+  border-radius: var(--jf-radius);
+  padding: 18px 20px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 14px;
 }
-.timeline-company {
-  color: #909399;
-  font-size: 13px;
-}
-.profile-line {
-  font-size: 16px;
-}
-.profile-meta {
-  color: #606266;
-  font-size: 13px;
-  margin-top: 6px;
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-</style>
+.stat-value { font-size: 28px; font-weight: 800; line-height: 1.1; }
+.stat-label { font-size: 13px; color: var(--jf-ink-soft); margin-top: 4px; }
 
+.dash-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+@media (max-width: 1100px) {
+  .dash-grid { grid-template-columns: 1fr; }
+}
+.panel {
+  background: var(--jf-surface);
+  border: 1px solid var(--jf-border);
+  border-radius: var(--jf-radius);
+  padding: 16px 20px;
+}
+.right-col { display: flex; flex-direction: column; gap: 16px; }
+.link-icon { margin-left: 2px; }
+
+.rec-list { margin-top: 8px; }
+.rec-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px;
+  border-radius: 10px;
+  border-bottom: 1px solid var(--jf-border-lighter, #eef8f5);
+}
+.rec-row:last-child { border-bottom: none; }
+.rec-main { flex: 1; min-width: 0; }
+.rec-title { font-size: 14px; font-weight: 600; color: var(--jf-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-meta { display: flex; align-items: center; gap: 6px; color: var(--jf-ink-soft); font-size: 12px; margin-top: 4px; flex-wrap: wrap; }
+.dot { color: var(--jf-border-strong); }
+.rec-match { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.score-badge {
+  min-width: 46px;
+  text-align: center;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+}
+.score-badge small { font-size: 10px; font-weight: 600; }
+.level-s { background: #dc2626; }
+.level-a { background: #ea580c; }
+.level-b { background: #0d9488; }
+.level-c { background: #94a3b8; }
+.level-d { background: #cbd5e1; }
+
+.timeline-body { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tl-title { font-size: 13px; }
+.tl-company { font-size: 12px; }
+
+.profile-line { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.profile-tag { margin-left: 0; }
+.profile-meta { color: var(--jf-ink-soft); font-size: 12px; margin-top: 8px; display: flex; gap: 12px; flex-wrap: wrap; }
+.profile-progress { margin-top: 14px; }
+.progress-caption { margin-top: 6px; color: var(--jf-muted); font-size: 12px; }
+</style>

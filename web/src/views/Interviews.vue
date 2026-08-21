@@ -1,12 +1,10 @@
-<template>
+﻿<template>
   <div>
-    <el-card>
-      <template #header>
-        <div class="card-header">
-          <span>📅 面试日程</span>
-          <el-button type="primary" @click="openDialog()">+ 添加面试</el-button>
-        </div>
-      </template>
+    <section class="panel">
+      <header class="panel-header">
+        <span class="panel-title"><el-icon><Calendar /></el-icon>面试日程</span>
+        <el-button type="primary" :icon="Plus" @click="openDialog()">添加面试</el-button>
+      </header>
 
       <el-table :data="interviews">
         <el-table-column label="公司 / 职位" min-width="200">
@@ -15,15 +13,18 @@
             <div class="company">{{ row.company_name }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="类型 / 轮次" width="120">
-          <template #default="{ row }">{{ row.interview_type }} · 第{{ row.round_no }}轮</template>
+        <el-table-column label="类型 / 轮次" width="130">
+          <template #default="{ row }">
+            <el-tag size="small" effect="plain">{{ row.interview_type }}</el-tag>
+            <span class="round">第 {{ row.round_no }} 轮</span>
+          </template>
         </el-table-column>
-        <el-table-column label="时间" width="160">
+        <el-table-column label="时间" width="165">
           <template #default="{ row }">{{ (row.scheduled_at || '').slice(0, 16).replace('T', ' ') }}</template>
         </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="ivType(row.status)" size="small">{{ ivText(row.status) }}</el-tag>
+            <el-tag :type="ivType(row.status)" size="small" effect="plain">{{ ivText(row.status) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="备注" min-width="180" show-overflow-tooltip>
@@ -36,9 +37,10 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+      <el-empty v-if="!interviews.length" description="暂无面试记录" :image-size="80" />
+    </section>
 
-    <el-dialog v-model="dialogVisible" :title="editing ? '编辑面试' : '添加面试'" width="520px">
+    <el-dialog v-model="dialogVisible" :title="editing ? '编辑面试' : '添加面试'" width="560px">
       <el-form :model="form" label-width="90px">
         <el-form-item label="岗位">
           <el-select v-model="form.job_id" placeholder="关联岗位（选填）" clearable filterable style="width: 100%">
@@ -88,6 +90,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Calendar, Plus } from '@element-plus/icons-vue'
 import { createInterview, deleteInterview, getApplications, getInterviews, updateInterview } from '@/api'
 
 const interviews = ref([])
@@ -166,17 +169,13 @@ onMounted(load)
 </script>
 
 <style scoped>
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.panel {
+  background: var(--jf-surface);
+  border: 1px solid var(--jf-border);
+  border-radius: var(--jf-radius);
+  padding: 16px 20px;
 }
-.job-title {
-  font-weight: 600;
-}
-.company {
-  color: #909399;
-  font-size: 12px;
-}
+.job-title { font-weight: 600; color: var(--jf-ink); }
+.company { color: var(--jf-muted); font-size: 12px; margin-top: 2px; }
+.round { margin-left: 6px; color: var(--jf-ink-soft); font-size: 13px; }
 </style>
-

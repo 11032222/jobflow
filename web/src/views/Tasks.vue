@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div>
     <el-alert
       type="info"
@@ -8,13 +8,11 @@
       style="margin-bottom: 16px"
     />
 
-    <el-card>
-      <template #header>
-        <div class="card-header">
-          <span>⚙️ Agent 任务</span>
-          <el-button size="small" @click="load">刷新</el-button>
-        </div>
-      </template>
+    <section class="panel">
+      <header class="panel-header">
+        <span class="panel-title"><el-icon><Cpu /></el-icon>Agent 任务</span>
+        <el-button size="small" :icon="Refresh" @click="load">刷新</el-button>
+      </header>
 
       <el-table :data="tasks">
         <el-table-column label="任务类型" width="160">
@@ -24,15 +22,15 @@
         </el-table-column>
         <el-table-column label="状态" width="130">
           <template #default="{ row }">
-            <el-tag :type="taskStatusTag(row.status)" size="small">{{ taskStatusText(row.status) }}</el-tag>
+            <el-tag :type="taskStatusTag(row.status)" size="small" effect="plain">{{ taskStatusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="进度" width="140">
+        <el-table-column label="进度" width="150">
           <template #default="{ row }">
             <el-progress :percentage="row.progress" :stroke-width="8" />
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" width="160">
+        <el-table-column label="创建时间" width="165">
           <template #default="{ row }">{{ row.created_at.slice(0, 16).replace('T', ' ') }}</template>
         </el-table-column>
         <el-table-column label="提示 / 错误" min-width="220" show-overflow-tooltip>
@@ -40,12 +38,13 @@
         </el-table-column>
       </el-table>
       <el-empty v-if="!tasks.length" description="暂无任务记录" :image-size="80" />
-    </el-card>
+    </section>
   </div>
 </template>
 
 <script setup>
 import { onMounted, ref } from 'vue'
+import { Cpu, Refresh } from '@element-plus/icons-vue'
 import { getTasks } from '@/api'
 
 const tasks = ref([])
@@ -68,9 +67,10 @@ onMounted(load)
 </script>
 
 <style scoped>
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.panel {
+  background: var(--jf-surface);
+  border: 1px solid var(--jf-border);
+  border-radius: var(--jf-radius);
+  padding: 16px 20px;
 }
 </style>

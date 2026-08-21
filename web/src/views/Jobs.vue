@@ -1,9 +1,14 @@
 <template>
   <div>
-    <el-card>
-      <el-form inline>
+    <!-- 筛选区 -->
+    <section class="panel">
+      <header class="panel-header filter-head">
+        <span class="panel-title"><el-icon><Search /></el-icon>岗位筛选</span>
+        <el-button type="success" plain :icon="Download" :loading="importing" @click="openImport">从平台导入岗位</el-button>
+      </header>
+      <el-form inline class="filter-form">
         <el-form-item label="关键词">
-          <el-input v-model="filters.keyword" placeholder="职位 / 公司" clearable style="width: 180px" @keyup.enter="load" @clear="load" />
+          <el-input v-model="filters.keyword" placeholder="职位 / 公司" clearable style="width: 170px" @keyup.enter="load" @clear="load" />
         </el-form-item>
         <el-form-item label="城市">
           <el-select v-model="filters.city" placeholder="全部" clearable filterable style="width: 110px" @change="load">
@@ -37,19 +42,20 @@
             <el-option label="5年以上" value="5-10" />
           </el-select>
         </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="load">查询</el-button>
-          <el-button @click="resetFilters">重置</el-button>
-          <el-button type="success" plain :loading="importing" style="margin-left: 8px" @click="openImport">
-            从平台导入岗位
-          </el-button>
+        <el-form-item class="filter-actions">
+          <el-button type="primary" :icon="Search" @click="load">查询</el-button>
+          <el-button :icon="RefreshLeft" @click="resetFilters">重置</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </section>
 
-    <el-card style="margin-top: 16px">
-      <el-table :data="jobs" size="default" @row-click="(row) => $router.push(`/jobs/${row.id}`)" style="cursor: pointer">
-        <el-table-column label="职位" min-width="200">
+    <!-- 岗位列表 -->
+    <section class="panel list-panel">
+      <header class="panel-header">
+        <span class="panel-title"><el-icon><OfficeBuilding /></el-icon>岗位列表 <el-tag size="small" effect="plain" type="info">{{ total }} 个岗位</el-tag></span>
+      </header>
+      <el-table :data="jobs" @row-click="(row) => $router.push(`/jobs/${row.id}`)">
+        <el-table-column label="职位" min-width="210">
           <template #default="{ row }">
             <div class="job-title">{{ row.title }}</div>
             <div class="job-tags">
@@ -57,18 +63,18 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="公司" width="130">
-          <template #default="{ row }">{{ row.company_name }}</template>
+        <el-table-column label="公司" width="140">
+          <template #default="{ row }"><span class="company-name">{{ row.company_name }}</span></template>
         </el-table-column>
         <el-table-column label="城市" width="80">
           <template #default="{ row }">{{ row.city }}</template>
         </el-table-column>
-        <el-table-column label="薪资" width="120">
-          <template #default="{ row }"><span class="salary">{{ row.salary_text }}</span></template>
+        <el-table-column label="薪资" width="130">
+          <template #default="{ row }"><span class="salary-text">{{ row.salary_text }}</span></template>
         </el-table-column>
-        <el-table-column label="学历/经验" width="120">
+        <el-table-column label="学历/经验" width="130">
           <template #default="{ row }">
-            <div>{{ row.education }} · {{ row.experience }}</div>
+            <div class="edu-exp">{{ row.education }} · {{ row.experience }}</div>
             <el-tag v-if="row.job_type === '实习'" size="small" type="warning" effect="plain">实习</el-tag>
           </template>
         </el-table-column>
@@ -77,44 +83,51 @@
             <el-tag :type="sourceType(row.source)" size="small" effect="plain">{{ sourceText(row.source) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="匹配" width="110">
+        <el-table-column label="匹配" width="120">
           <template #default="{ row }">
             <template v-if="row.match">
-              <el-tag :type="levelType(row.match.recommend_level)" size="small">
-                {{ row.match.match_score }}分 {{ row.match.recommend_level }}
-              </el-tag>
+              <span class="match-cell">
+                <span class="score-badge" :class="levelClass(row.match.recommend_level)">{{ row.match.match_score }}</span>
+                <el-tag :type="levelType(row.match.recommend_level)" size="small" effect="plain">{{ row.match.recommend_level }}</el-tag>
+              </span>
             </template>
             <el-button v-else link type="primary" size="small" @click.stop="handleMatch(row)">分析</el-button>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="!row.is_favorite" link type="warning" @click.stop="toggleFavorite(row)">收藏</el-button>
-            <el-button v-else link type="warning" @click.stop="toggleFavorite(row)">取消收藏</el-button>
+            <el-button :icon="Star" link :type="row.is_favorite ? 'warning' : 'info'" @click.stop="toggleFavorite(row)">
+              {{ row.is_favorite ? '已收藏' : '收藏' }}
+            </el-button>
             <el-button v-if="row.is_applied" link disabled>已投递</el-button>
             <el-button v-else link type="primary" @click.stop="$router.push(`/jobs/${row.id}`)">投递</el-button>
           </template>
         </el-table-column>
       </el-table>
 
-      <el-pagination
-        v-model:current-page="page"
-        :page-size="pageSize"
-        :total="total"
-        layout="total, prev, pager, next"
-        style="margin-top: 16px; justify-content: flex-end"
-        @current-change="load"
-      />
-    </el-card>
+      <div class="pager">
+        <el-pagination
+          v-model:current-page="page"
+          :page-size="pageSize"
+          :total="total"
+          layout="total, prev, pager, next"
+          background
+          @current-change="load"
+        />
+      </div>
+    </section>
 
-    <el-dialog v-model="importVisible" title="多平台导入岗位" width="560px" destroy-on-close>
-      <el-form label-width="108px">
+    <!-- 多平台导入 -->
+    <el-dialog v-model="importVisible" title="多平台导入岗位" width="600px" destroy-on-close>
+      <el-form label-width="96px">
         <el-form-item label="采集平台">
-          <el-checkbox-group v-model="importForm.platforms">
-            <el-checkbox value="zhaopin">智联招聘</el-checkbox>
-            <el-checkbox value="zhipin">BOSS直聘</el-checkbox>
-            <el-checkbox value="mock">模拟数据</el-checkbox>
-          </el-checkbox-group>
+          <div class="platform-cards">
+            <label v-for="p in platforms" :key="p.value" class="platform-card" :class="{ checked: importForm.platforms.includes(p.value) }">
+              <el-checkbox v-model="importForm.platforms" :value="p.value" class="platform-check">
+                <span class="platform-label"><el-icon><component :is="p.icon" /></el-icon>{{ p.label }}</span>
+              </el-checkbox>
+            </label>
+          </div>
         </el-form-item>
         <el-alert
           v-if="importForm.platforms.includes('zhipin')"
@@ -125,7 +138,7 @@
           style="margin-bottom: 12px"
         />
         <el-form-item v-if="importForm.platforms.includes('zhipin')" label="调试浏览器">
-          <el-button :loading="launchingChrome" @click="launchChrome">启动调试 Chrome</el-button>
+          <el-button :icon="Monitor" :loading="launchingChrome" @click="launchChrome">启动调试 Chrome</el-button>
           <span class="hint">{{ zhipinReady ? '已连接，请确认已登录 BOSS' : '会弹出独立窗口，登录一次即可' }}</span>
         </el-form-item>
         <el-form-item label="智能补全">
@@ -141,10 +154,12 @@
           </el-select>
         </el-form-item>
         <el-form-item label="薪资范围">
-          <el-input-number v-model="importForm.salary_min" :min="0" :step="1000" controls-position="right" placeholder="最低" style="width: 140px" />
-          <span style="margin: 0 8px">~</span>
-          <el-input-number v-model="importForm.salary_max" :min="0" :step="1000" controls-position="right" placeholder="最高" style="width: 140px" />
-          <span class="hint">元/月</span>
+          <div class="salary-range">
+            <el-input-number v-model="importForm.salary_min" :min="0" :step="1000" controls-position="right" placeholder="最低" style="width: 150px" />
+            <span class="range-sep">~</span>
+            <el-input-number v-model="importForm.salary_max" :min="0" :step="1000" controls-position="right" placeholder="最高" style="width: 150px" />
+            <span class="hint">元/月</span>
+          </div>
         </el-form-item>
         <el-form-item label="采集页数">
           <el-input-number v-model="importForm.pages" :min="1" :max="5" />
@@ -152,7 +167,7 @@
       </el-form>
       <template #footer>
         <el-button @click="importVisible = false">取消</el-button>
-        <el-button type="primary" :loading="importing" :disabled="!importForm.platforms.length" @click="submitImport">
+        <el-button type="primary" :icon="Download" :loading="importing" :disabled="!importForm.platforms.length" @click="submitImport">
           开始采集
         </el-button>
       </template>
@@ -163,6 +178,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElNotification } from 'element-plus'
+import { Aim, DataLine, Download, Monitor, OfficeBuilding, RefreshLeft, Search, Star } from '@element-plus/icons-vue'
 import {
   addFavorite,
   getCollectors,
@@ -177,6 +193,12 @@ import {
 } from '@/api'
 
 const CITIES = ['北京', '上海', '深圳', '杭州', '广州', '成都', '南京', '武汉', '西安', '苏州', '长沙', '郑州']
+
+const platforms = [
+  { value: 'zhaopin', label: '智联招聘', icon: OfficeBuilding },
+  { value: 'zhipin', label: 'BOSS直聘', icon: Aim },
+  { value: 'mock', label: '模拟数据', icon: DataLine },
+]
 
 const jobs = ref([])
 const total = ref(0)
@@ -209,6 +231,9 @@ const zhipinHint = computed(() => {
 
 function levelType(level) {
   return { S: 'danger', A: 'warning', B: 'primary', C: 'info', D: 'info' }[level] || 'info'
+}
+function levelClass(level) {
+  return { S: 'level-s', A: 'level-a', B: 'level-b', C: 'level-c', D: 'level-d' }[level] || 'level-d'
 }
 
 function sourceText(s) {
@@ -269,7 +294,7 @@ async function launchChrome() {
         return
       }
     }
-    ElMessage.warning('窗口应已弹出。若没有，请双击 auto-zhipin/start_chrome.bat')
+    ElMessage.warning('窗口应已弹出。若没有，请双击 crawlers/boss-zhipin/start_chrome.bat')
   } catch (err) {
     ElMessage.error(err?.response?.data?.detail || err.message || '启动失败')
   } finally {
@@ -355,21 +380,49 @@ onMounted(load)
 </script>
 
 <style scoped>
-.job-title {
-  font-weight: 600;
+.panel {
+  background: var(--jf-surface);
+  border: 1px solid var(--jf-border);
+  border-radius: var(--jf-radius);
+  padding: 16px 20px;
 }
-.job-tags {
-  margin-top: 4px;
-  display: flex;
-  gap: 4px;
+.filter-head { margin-bottom: 6px; }
+.filter-form { margin-top: 10px; }
+.filter-actions { margin-left: auto; }
+.list-panel { margin-top: 16px; }
+
+.job-title { font-size: 14px; font-weight: 600; color: var(--jf-ink); }
+.job-tags { margin-top: 4px; display: flex; gap: 4px; }
+.company-name { color: var(--jf-ink-soft); }
+.edu-exp { color: #334155; }
+.match-cell { display: inline-flex; align-items: center; gap: 6px; }
+.score-badge {
+  min-width: 34px; text-align: center; padding: 2px 6px; border-radius: 6px;
+  font-size: 13px; font-weight: 700; color: #fff;
 }
-.salary {
-  color: #f56c6c;
-  font-weight: 600;
+.level-s { background: #dc2626; }
+.level-a { background: #ea580c; }
+.level-b { background: #0d9488; }
+.level-c { background: #94a3b8; }
+.level-d { background: #cbd5e1; }
+
+.pager { display: flex; justify-content: flex-end; margin-top: 16px; }
+
+.platform-cards { display: flex; gap: 10px; flex-wrap: wrap; }
+.platform-card {
+  border: 1px solid var(--jf-border-strong);
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  background: var(--jf-surface);
 }
-.hint {
-  margin-left: 8px;
-  color: #909399;
-  font-size: 12px;
-}
+.platform-card:hover { border-color: var(--jf-primary); }
+.platform-card.checked { border-color: var(--jf-primary); background: var(--jf-primary-softer); }
+.platform-check { margin-right: 0; white-space: nowrap; }
+.platform-label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--jf-ink); }
+
+.salary-range { display: flex; align-items: center; gap: 10px; }
+.range-sep { color: var(--jf-muted); }
+.hint { margin-left: 8px; color: var(--jf-muted); font-size: 12px; }
 </style>

@@ -1,4 +1,4 @@
-"""BOSS 直聘 CDP 采集：复用 auto-zhipin/boss_cdp.py 的思路。
+"""BOSS 直聘 CDP 采集：复用 crawlers/boss-zhipin/boss_cdp.py 的思路。
 
 连接已登录的真实 Chrome（--remote-debugging-port=9222），从 Vue 状态读取明文薪资，
 避免 Playwright 被反爬识别。
@@ -77,6 +77,50 @@ EXTRACT_JS = r"""
     url: (j.encryptJobId ? '/job_detail/' + j.encryptJobId + '.html' : ''),
   }));
   return JSON.stringify({ok: true, count: jobs.length, hasMore: !!target.hasMore, jobs});
+})()
+"""
+
+
+DETAIL_EXTRACT_JS = r"""
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const text = (el) => el ? el.innerText.replace(/\s+/g, ' ').trim() : '';
+  const o = {};
+  o.status = text($('.job-status span')) || text($('.job-status'));
+  const nameEl = $('.job-primary .name');
+  o.title = nameEl ? text(nameEl.querySelector('h1')) : '';
+  o.salary = nameEl ? text(nameEl.querySelector('.salary')) : '';
+  o.company = text($('.brand-name')).replace(/^代招公司[:：]?\s*/, '');
+  o.city = text($('.text-city'));
+  o.experience = text($('.text-experiece'));
+  o.degree = text($('.text-degree'));
+  o.description = text($('.job-sec-text'));
+  const tags = new Set();
+  ['.job-banner .job-tags', '.job-banner .tag-all', '.job-tags', '.job-tags .tag-all']
+    .forEach(sel => {
+      const el = $(sel);
+      if (!el) return;
+      el.querySelectorAll('span, li, em').forEach(x => {
+        const t = x.innerText.trim();
+        if (t && t.length <= 15 && !/感兴趣|立即沟通|在线简历|附件简历/.test(t)) tags.add(t);
+      });
+    });
+  o.welfare = [...tags];
+  const bi = $('.job-boss-info');
+  if (bi) {
+    o.boss_name = text(bi.querySelector('.name'));
+    const attr = bi.querySelector('.boss-info-attr');
+    const parts = attr ? attr.innerText.split('\u00b7').map(s => s.trim()) : [];
+    o.boss_company = parts[0] || '';
+    o.boss_title = parts.slice(1).join('\u00b7') || '';
+    o.boss_avatar = (bi.querySelector('img') || {}).src || '';
+  }
+  const interest = $('.btn-interest');
+  o.interest_url = interest ? (interest.getAttribute('data-url') || '') : '';
+  const chat = $('.btn-startchat');
+  o.chat_redirect = chat ? (chat.getAttribute('redirect-url') || '') : '';
+  o.url = location.href;
+  return JSON.stringify(o);
 })()
 """
 
@@ -239,11 +283,40 @@ def launch_debug_chrome() -> dict:
     }
 
 
-async def crawl_jobs(query: str, city_code: str, salary_code: str | None, max_pages: int) -> list[dict]:
+
+async def fetch_detail(cdp, sid, job: dict) -> dict:
+    """导航到职位详情页，抓取描述/福利/招聘者等信息。"""
+    url = job.get("url") or ""
+    if not url:
+        return job
+    full = url if url.startswith("http") else f"{BASE_URL}{url}"
+    try:
+        await cdp.send("Page.navigate", {"url": full}, sid)
+        for _ in range(40):
+            await asyncio.sleep(1)
+            raw = await cdp.eval_js(DETAIL_EXTRACT_JS, sid)
+            try:
+                d = json.loads(raw or "{}")
+            except json.JSONDecodeError:
+                d = {}
+            if d.get("description") or d.get("title"):
+                job["detail"] = d
+                job["desc"] = d.get("description", "") or job.get("desc", "")
+                job["welfare"] = d.get("welfare") or job.get("welfare", [])
+                if d.get("salary"):
+                    job["salary"] = d["salary"]
+                return job
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("BOSS 详情抓取失败 %s: %s", url, exc)
+    job["desc"] = job.get("desc", "")
+    return job
+
+
+async def crawl_jobs(query: str, city_code: str, salary_code: str | None, max_pages: int, with_detail: bool = True, detail_max: int = 60) -> list[dict]:
     port = get_debug_port()
     if port is None:
         raise RuntimeError(
-            "未检测到调试 Chrome。请先运行 auto-zhipin/start_chrome.bat "
+            "未检测到调试 Chrome。请先运行 crawlers/boss-zhipin/start_chrome.bat "
             "（chrome --remote-debugging-port=9222）并登录 BOSS 直聘后再采集。"
         )
 
@@ -308,17 +381,24 @@ async def crawl_jobs(query: str, city_code: str, salary_code: str | None, max_pa
                 prev_count = len(jobs)
                 if rnd < max_pages:
                     await asyncio.sleep(random.uniform(1.5, 3.0))
+            if with_detail and all_jobs:
+                todo = all_jobs[:max(1, detail_max)]
+                logger.info("BOSS 抓取详情 %s/%s", len(todo), len(all_jobs))
+                for i, job in enumerate(todo, 1):
+                    await fetch_detail(cdp, sid, job)
+                    if i < len(todo):
+                        await asyncio.sleep(random.uniform(1.5, 3.0))
             return all_jobs
         finally:
             await cdp.close_page(tid)
 
 
-def crawl_jobs_sync(query: str, city_code: str, salary_code: str | None, max_pages: int) -> list[dict]:
+def crawl_jobs_sync(query: str, city_code: str, salary_code: str | None, max_pages: int, with_detail: bool = True, detail_max: int = 60) -> list[dict]:
     """可在 FastAPI 已有事件循环的后台任务里调用。"""
     import concurrent.futures
 
     def _run():
-        return asyncio.run(crawl_jobs(query, city_code, salary_code, max_pages))
+        return asyncio.run(crawl_jobs(query, city_code, salary_code, max_pages, with_detail=with_detail, detail_max=detail_max))
 
     try:
         asyncio.get_running_loop()

@@ -1,4 +1,4 @@
-"""BOSS 直聘 Adapter：HTTP 公开接口优先，失败则走 CDP（auto-zhipin/boss_cdp）。"""
+"""BOSS 直聘 Adapter：HTTP 公开接口优先，失败则走 CDP（crawlers/boss-zhipin/boss_cdp）。"""
 from __future__ import annotations
 
 import logging
@@ -13,7 +13,7 @@ from app.collectors.zhaopin import parse_salary
 
 logger = logging.getLogger(__name__)
 
-# BOSS 城市代码（与 auto-zhipin README 一致，可从 URL 的 city 参数核对）
+# BOSS 城市代码（与 crawlers/boss-zhipin README 一致，可从 URL 的 city 参数核对）
 CITY_CODES = {
     "全国": "100010000",
     "北京": "101010100",
@@ -100,6 +100,30 @@ def _job_type_text(raw) -> str | None:
     return str(raw)
 
 
+
+_RESP_HEADINGS = {"岗位职责", "工作职责", "职位描述", "职责描述", "主要职责", "你需要做", "你将负责"}
+_REQ_HEADINGS = {"任职要求", "岗位要求", "任职资格", "工作要求", "职位要求", "我们需要你", "希望你具备"}
+
+
+def _split_job_description(text: str | None) -> tuple[str | None, str | None]:
+    """把详情页描述拆成「岗位职责 / 任职要求」两段。"""
+    if not text or not text.strip():
+        return None, None
+    parts = re.split(r"(岗位职责|工作职责|职位描述|职责描述|主要职责|你需要做|你将负责|任职要求|岗位要求|任职资格|工作要求|职位要求|我们需要你|希望你具备)", text.strip())
+    resp: list[str] = []
+    req: list[str] = []
+    current: str | None = None
+    for part in parts:
+        key = part.strip()
+        if key in _RESP_HEADINGS:
+            current = "resp"
+        elif key in _REQ_HEADINGS:
+            current = "req"
+        elif key and current == "resp":
+            resp.append(key)
+        elif key and current == "req":
+            req.append(key)
+    return ("\n".join(resp) or None), ("\n".join(req) or None)
 def _normalize_raw(raw: dict) -> dict | None:
     title = (raw.get("title") or raw.get("jobName") or "").strip()
     source_id = raw.get("encrypt_job_id") or raw.get("encryptJobId") or raw.get("jobId")
@@ -117,6 +141,24 @@ def _normalize_raw(raw: dict) -> dict | None:
     elif not path and source_id:
         path = f"https://www.zhipin.com/job_detail/{source_id}.html"
 
+    detail = raw.get("detail") or {}
+    description = (
+        raw.get("desc")
+        or raw.get("description")
+        or raw.get("postDescription")
+        or detail.get("description")
+        or ""
+    ).strip()
+    responsibilities, requirements = _split_job_description(description)
+    welfare = detail.get("welfare") or []
+    merged_tags = list(labels)
+    for tag in welfare:
+        if tag and tag not in merged_tags:
+            merged_tags.append(tag)
+    if not salary_text and detail.get("salary"):
+        salary_text = detail.get("salary")
+        salary_min, salary_max = parse_salary(salary_text)
+
     return PlatformAdapter._build_job(
         title=title,
         company_name=company,
@@ -129,10 +171,10 @@ def _normalize_raw(raw: dict) -> dict | None:
         experience=raw.get("experience") or raw.get("jobExperience"),
         job_type=_job_type_text(raw.get("job_type") or raw.get("jobType")),
         industry=None,
-        tags=list(labels),
-        description=raw.get("desc") or raw.get("description") or raw.get("postDescription"),
-        responsibilities=None,
-        requirements=None,
+        tags=merged_tags,
+        description=description or None,
+        responsibilities=responsibilities,
+        requirements=requirements,
         publish_time=datetime.now(),
         source="zhipin",
         source_url=path,
@@ -228,5 +270,5 @@ def zhipin_ready() -> dict:
         "cdp_port": port,
         "hint": None
         if port
-        else "请先点击「启动调试 Chrome」并在弹出窗口登录 BOSS 直聘（也可双击 auto-zhipin/start_chrome.bat）",
+        else "请先点击「启动调试 Chrome」并在弹出窗口登录 BOSS 直聘（也可双击 crawlers/boss-zhipin/start_chrome.bat）",
     }

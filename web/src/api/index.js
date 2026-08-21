@@ -82,5 +82,12 @@ export const getModelConfig = () => request.get('/settings/model')
 export const saveModelConfig = (data) => request.put('/settings/model', data)
 export const testModelConfig = (data) => request.post('/settings/model/test', data)
 
+export const listModelConfigs = () => request.get('/settings/models')
+export const createModelConfig = (data) => request.post('/settings/models', data)
+export const updateModelConfig = (id, data) => request.put(`/settings/models/${id}`, data)
+export const deleteModelConfig = (id) => request.delete(`/settings/models/${id}`)
+export const activateModelConfig = (id) => request.post(`/settings/models/${id}/activate`)
+export const testModelConfigById = (id) => request.post(`/settings/models/${id}/test`)
+
 // ===== 简历修改建议 =====
 export const getProfileSuggestions = (profileId) => request.post(`/profiles/${profileId}/suggestions`)
