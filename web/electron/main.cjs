@@ -1,4 +1,4 @@
-﻿const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, session } = require('electron')
 const path = require('path')
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5174'
@@ -31,6 +31,15 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // 允许麦克风权限，供面试问答的语音录入使用
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    const allowed = ['media', 'audioCapture', 'videoCapture'].includes(permission)
+    callback(allowed)
+  })
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+    return ['media', 'audioCapture', 'videoCapture'].includes(permission)
+  })
+
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -40,4 +49,3 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
-

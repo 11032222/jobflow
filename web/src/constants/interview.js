@@ -60,14 +60,14 @@ export const INTERVIEW_RESULT_TAG = {
   PENDING: 'warning',
 }
 
-// 面试问题自评（文档 3.10）
-export const SELF_RESULT = {
+// 面试问题掌握度（文档 3.10）
+export const MASTERY = {
   MASTERED: '已掌握',
   PARTIAL: '回答不完整',
   FAILED: '完全不会',
 }
 
-export const SELF_RESULT_TAG = {
+export const MASTERY_TAG = {
   MASTERED: 'success',
   PARTIAL: 'warning',
   FAILED: 'danger',

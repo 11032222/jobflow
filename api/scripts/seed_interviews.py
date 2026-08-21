@@ -100,14 +100,14 @@ def seed_interview_demo(db, user: User) -> int:
             print(f"  面试 {interview.id} 已有问题记录，跳过")
             continue
 
-        for order, (question, answer, self_result) in enumerate(questions):
+        for order, (question, answer, mastery) in enumerate(questions):
             db.add(
                 InterviewQuestion(
                     interview_id=interview.id,
                     user_id=user.id,
                     question=question,
                     my_answer=answer,
-                    self_result=self_result,
+                    mastery=mastery,
                     source="USER",
                     sort_order=order,
                 )

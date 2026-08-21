@@ -8,7 +8,7 @@ import logging
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
-from app.models.interview import SELF_RESULT_SCORE, Interview, InterviewQuestion
+from app.models.interview import MASTERY_SCORE, Interview, InterviewQuestion
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,8 @@ def _score_by_category(db: Session, user_id: int, interview_ids: list[int]) -> d
             func.count(InterviewQuestion.id),
             func.sum(
                 case(
-                    (InterviewQuestion.self_result == "MASTERED", 1.0),
-                    (InterviewQuestion.self_result == "PARTIAL", 0.5),
+                    (InterviewQuestion.mastery == "MASTERED", 1.0),
+                    (InterviewQuestion.mastery == "PARTIAL", 0.5),
                     else_=0.0,
                 )
             ),
@@ -78,9 +78,9 @@ def build_knowledge(db: Session, user_id: int) -> dict:
             InterviewQuestion.category,
             func.count(InterviewQuestion.id).label("cnt"),
             func.count(func.distinct(InterviewQuestion.interview_id)).label("iv_cnt"),
-            func.sum(case((InterviewQuestion.self_result == "MASTERED", 1), else_=0)),
-            func.sum(case((InterviewQuestion.self_result == "PARTIAL", 1), else_=0)),
-            func.sum(case((InterviewQuestion.self_result == "FAILED", 1), else_=0)),
+            func.sum(case((InterviewQuestion.mastery == "MASTERED", 1), else_=0)),
+            func.sum(case((InterviewQuestion.mastery == "PARTIAL", 1), else_=0)),
+            func.sum(case((InterviewQuestion.mastery == "FAILED", 1), else_=0)),
         ).filter(InterviewQuestion.user_id == user_id)
     ).group_by(InterviewQuestion.category).all()
 
@@ -105,7 +105,7 @@ def build_knowledge(db: Session, user_id: int) -> dict:
     for category, cnt, iv_cnt, mastered, partial, failed in rows:
         mastered, partial, failed = int(mastered or 0), int(partial or 0), int(failed or 0)
         score = round(
-            (mastered * SELF_RESULT_SCORE["MASTERED"] + partial * SELF_RESULT_SCORE["PARTIAL"])
+            (mastered * MASTERY_SCORE["MASTERED"] + partial * MASTERY_SCORE["PARTIAL"])
             / cnt,
             2,
         )
@@ -140,7 +140,7 @@ def build_knowledge(db: Session, user_id: int) -> dict:
         )
         .filter(
             InterviewQuestion.user_id == user_id,
-            InterviewQuestion.self_result != "MASTERED",
+            InterviewQuestion.mastery != "MASTERED",
             InterviewQuestion.knowledge_point.isnot(None),
             InterviewQuestion.knowledge_point != "",
         )

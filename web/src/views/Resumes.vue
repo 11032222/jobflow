@@ -27,6 +27,9 @@
                 <el-tag size="small" :type="parseTag(r.parse_status)" effect="plain">{{ parseText(r.parse_status) }}</el-tag>
                 <span>{{ (r.file_size / 1024).toFixed(0) }} KB</span>
               </div>
+              <div v-if="r.parse_status === 'FAILED' && r.fail_reason" class="resume-fail" :title="r.fail_reason">
+                {{ r.fail_reason }}
+              </div>
             </div>
             <el-button v-if="r.parse_status !== 'SUCCESS' && r.parse_status !== 'PARSING'" link type="primary" size="small" @click="handleParse(r)">解析</el-button>
             <el-button link type="danger" size="small" @click="handleDelete(r)">删除</el-button>
@@ -296,14 +299,14 @@ async function handleParse(r) {
     await new Promise((res) => setTimeout(res, 2000))
     const list = await getResumes()
     const cur = list.find((x) => x.id === r.id)
-    if (cur && cur.parse_status !== 'PARSING') {
-      if (cur.parse_status === 'SUCCESS') {
-        ElMessage.success('简历解析完成，已生成新的求职画像')
-      } else {
-        ElMessage.warning('简历解析失败，可检查文件内容后重试')
+      if (cur && cur.parse_status !== 'PARSING') {
+        if (cur.parse_status === 'SUCCESS') {
+          ElMessage.success('简历解析完成，已生成新的求职画像')
+        } else {
+          ElMessage.warning(cur.fail_reason || '简历解析失败，可检查文件内容后重试')
+        }
+        break
       }
-      break
-    }
   }
   await loadAll()
 }
@@ -424,6 +427,7 @@ onMounted(loadAll)
 .resume-info { flex: 1; min-width: 0; }
 .resume-name { font-size: 14px; font-weight: 600; color: var(--jf-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .resume-meta { font-size: 12px; color: var(--jf-muted); display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+.resume-fail { font-size: 12px; color: var(--jf-danger, #f56c6c); margin-top: 4px; line-height: 1.4; }
 
 .salary-range { display: flex; align-items: center; gap: 8px; width: 100%; }
 .range-sep { color: var(--jf-muted); }

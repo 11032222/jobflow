@@ -19,6 +19,7 @@ class Resume(Base):
     parse_status: Mapped[str] = mapped_column(
         String(32), default="PENDING"
     )  # PENDING/PARSING/SUCCESS/FAILED
+    fail_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

@@ -9,8 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.models.interview import (
     INTERVIEW_RESULTS,
     INTERVIEW_TYPES,
+    MASTERY_VALUES,
     ROUND_TYPES,
-    SELF_RESULTS,
 )
 
 
@@ -104,7 +104,7 @@ class InterviewQuestionIn(BaseModel):
 
     question: str = Field(min_length=1, description="面试问题")
     my_answer: str | None = None
-    self_result: str = "PARTIAL"  # MASTERED/PARTIAL/FAILED
+    mastery: str = "PARTIAL"  # MASTERED/PARTIAL/FAILED
     category: str | None = None
     knowledge_point: str | None = None
     sort_order: int = 0
@@ -114,11 +114,11 @@ class InterviewQuestionIn(BaseModel):
     def _normalize_blank(cls, v: str | None) -> str | None:
         return _blank_to_none(v)
 
-    @field_validator("self_result")
+    @field_validator("mastery")
     @classmethod
-    def _validate_self_result(cls, v: str) -> str:
-        if v not in SELF_RESULTS:
-            raise ValueError(f"自评结果取值非法，应为 {'/'.join(SELF_RESULTS)} 之一")
+    def _validate_mastery(cls, v: str) -> str:
+        if v not in MASTERY_VALUES:
+            raise ValueError(f"掌握度取值非法，应为 {'/'.join(MASTERY_VALUES)} 之一")
         return v
 
     @field_validator("question")
@@ -135,7 +135,7 @@ class InterviewQuestionUpdate(BaseModel):
 
     question: str | None = None
     my_answer: str | None = None
-    self_result: str | None = None
+    mastery: str | None = None
     category: str | None = None
     knowledge_point: str | None = None
     sort_order: int | None = None
@@ -145,10 +145,10 @@ class InterviewQuestionUpdate(BaseModel):
     def _normalize_blank(cls, v: str | None) -> str | None:
         return _blank_to_none(v)
 
-    @field_validator("self_result")
+    @field_validator("mastery")
     @classmethod
-    def _validate_self_result(cls, v: str | None) -> str | None:
-        return _check_enum(v, SELF_RESULTS, "自评结果")
+    def _validate_mastery(cls, v: str | None) -> str | None:
+        return _check_enum(v, MASTERY_VALUES, "掌握度")
 
     @field_validator("question")
     @classmethod
@@ -219,9 +219,89 @@ class InterviewQuestionOut(BaseModel):
     user_id: int
     question: str
     my_answer: str | None = None
-    self_result: str
+    mastery: str
     category: str | None = None
     knowledge_point: str | None = None
     source: str  # USER/AGENT
     sort_order: int
     created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# 面试会话（独立于面试日程的对话记录、复盘与语音转写）——本地增量能力
+# ---------------------------------------------------------------------------
+
+
+class QuestionIn(BaseModel):
+    question: str
+    my_answer: str | None = None
+    mastery: str | None = None  # MASTERED/PARTIAL/FAILED
+
+
+class QuestionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    interview_id: int | None = None
+    session_id: int | None = None
+    question: str
+    my_answer: str | None = None
+    mastery: str = "PARTIAL"
+    category: str | None = None
+    knowledge_point: str | None = None
+    source: str = "USER"
+    sort_order: int = 0
+    created_at: datetime
+
+
+class SessionIn(BaseModel):
+    title: str
+    company_name: str | None = None
+    job_title: str | None = None
+    interview_id: int | None = None
+    source: str = "manual"  # recording / upload / manual
+
+
+class SessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    company_name: str | None = None
+    job_title: str | None = None
+    interview_id: int | None = None
+    source: str
+    duration_seconds: int | None = None
+    created_at: datetime
+    updated_at: datetime
+    question_count: int = 0
+
+
+class ReviewOut(BaseModel):
+    id: int
+    interview_id: int | None = None
+    session_id: int | None = None
+    status: str = "SUCCESS"
+    source: str | None = None
+    model_name: str | None = None
+    summary: str | None = None
+    dimensions: list[dict] = []
+    weak_points: list[str] = []
+    review_points: list[str] = []
+    knowledge_points: list[dict] = []
+    review_advice: str | None = None
+    created_at: datetime | None = None
+
+
+class SessionDetailOut(SessionOut):
+    raw_transcript: str | None = None
+    questions: list[QuestionOut] = []
+    review: ReviewOut | None = None
+
+
+class TranscribeOut(BaseModel):
+    text: str
+
+
+class TranscribeParseOut(BaseModel):
+    session: SessionDetailOut

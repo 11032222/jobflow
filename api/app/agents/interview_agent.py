@@ -9,7 +9,7 @@ import json
 import logging
 
 from app.agents.llm import llm_service
-from app.models.interview import SELF_RESULT_SCORE
+from app.models.interview import MASTERY_SCORE
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,49 @@ _MAX_PROMPT_CHARS = 1200
 class InterviewAgent:
     """面试复盘 Agent。"""
 
+    def parse_transcript(
+        self,
+        transcript: str,
+        user_id: int | None = None,
+    ) -> list[dict]:
+        """把整段面试对话转写文本拆成结构化问答列表（语音转写会话入口）。"""
+        transcript = (transcript or "").strip()
+        if not transcript or not llm_service.is_available(user_id):
+            return []
+
+        prompt = (
+            "你是面试记录整理助手。下面是一段面试对话的语音转写文本，"
+            "请把其中面试官提出的问题和候选人的回答整理成结构化问答。\n\n"
+            "要求：\n"
+            "1. 识别面试官提问与候选人回答，忽略寒暄、自我介绍等与考察无关的内容；\n"
+            "2. 一个问题对应一条记录，把候选人对该问题的回答合并进 answer；\n"
+            "3. 若转写中难以区分提问与回答，尽量按语义切分，保证 question 非空；\n"
+            "4. 只输出 JSON 数组，不要 Markdown 代码块或解释，格式为：\n"
+            '[{"question": "...", "answer": "..."}]\n\n'
+            f"转写文本：\n{transcript}"
+        )
+        data = llm_service.chat_json(
+            [{"role": "user", "content": prompt}],
+            temperature=0.1,
+            user_id=user_id,
+        )
+
+        items: list = []
+        if isinstance(data, list):
+            items = data
+        elif isinstance(data, dict) and isinstance(data.get("questions"), list):
+            items = data["questions"]
+
+        result = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            question = str(item.get("question") or "").strip()
+            answer = str(item.get("answer") or item.get("my_answer") or "").strip()
+            if question:
+                result.append({"question": question, "my_answer": answer})
+        return result
+
     def review(
         self,
         interview: dict,
@@ -56,7 +99,7 @@ class InterviewAgent:
         job: dict | None = None,
         user_id: int | None = None,
     ) -> dict:
-        """产出复盘结果。questions 每项需含 id / question / self_result。
+        """产出复盘结果。questions 每项需含 id / question / mastery。
 
         必定返回合法结果：LLM 不可用或输出不合法时自动降级规则引擎。
         """
@@ -99,7 +142,7 @@ class InterviewAgent:
             lines.append(
                 f"- id={q['id']} | 问题：{q.get('question', '')} "
                 f"| 我的回答：{q.get('my_answer') or '（未填写）'} "
-                f"| 自评：{q.get('self_result', 'PARTIAL')}"
+                f"| 自评：{q.get('mastery', 'PARTIAL')}"
             )
         q_text = "\n".join(lines)[:_MAX_PROMPT_CHARS]
 
@@ -212,7 +255,7 @@ class InterviewAgent:
         dimensions, weak_points = [], []
         for category, items in grouped.items():
             avg = sum(
-                SELF_RESULT_SCORE.get(i.get("self_result"), 0.0) for i in items
+                MASTERY_SCORE.get(i.get("mastery"), 0.0) for i in items
             ) / len(items)
             dimensions.append(
                 {
@@ -224,7 +267,7 @@ class InterviewAgent:
             )
             if avg < _WEAK_THRESHOLD:
                 weak_points += [
-                    i.get("question", "") for i in items if i.get("self_result") != "MASTERED"
+                    i.get("question", "") for i in items if i.get("mastery") != "MASTERED"
                 ]
         dimensions.sort(key=lambda d: d["score"])
 
@@ -233,7 +276,7 @@ class InterviewAgent:
             i.get("knowledge_point") or i.get("question", "")
             for cat in weak_categories
             for i in grouped[cat]
-            if i.get("self_result") != "MASTERED"
+            if i.get("mastery") != "MASTERED"
         ]
         summary = (
             f"本次面试共 {len(questions)} 题，覆盖 {len(dimensions)} 个方向；"

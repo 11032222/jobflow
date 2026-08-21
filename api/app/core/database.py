@@ -94,6 +94,8 @@ def _ensure_llm_config_columns() -> None:
         alters.append("ALTER TABLE user_llm_configs ADD COLUMN is_active BOOLEAN DEFAULT 0")
     if "created_at" not in cols:
         alters.append("ALTER TABLE user_llm_configs ADD COLUMN created_at DATETIME DEFAULT '2026-01-01 00:00:00'")
+    if "asr_model" not in cols:
+        alters.append("ALTER TABLE user_llm_configs ADD COLUMN asr_model VARCHAR(128)")
     with engine.begin() as conn:
         for stmt in alters:
             conn.execute(text(stmt))
@@ -166,8 +168,133 @@ def _ensure_interviews_columns() -> None:
         logger.info("已迁移 interviews 旧枚举值: %s 行", migrated)
 
 
+def _add_columns_if_missing(table: str, columns: dict[str, str]) -> None:
+    """给指定表补齐缺失列。columns: {列名: '类型 DEFAULT 值'}，DDL 需兼容 SQLite/MySQL。"""
+    insp = inspect(engine)
+    if not insp.has_table(table):
+        return
+    cols = {c["name"] for c in insp.get_columns(table)}
+    missing = [name for name in columns if name not in cols]
+    if not missing:
+        return
+    with engine.begin() as conn:
+        for name in missing:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {columns[name]}"))
+    logger.info("已为 %s 补齐列: %s", table, missing)
+
+
+def _encrypt_legacy_llm_keys() -> None:
+    """把上版本遗留的明文 API Key 一次性加密（幂等，已加密的不动）。"""
+    from app.core.crypto import encrypt_secret, is_encrypted
+    from app.models.system_config import UserLLMConfig
+
+    insp = inspect(engine)
+    if not insp.has_table("user_llm_configs"):
+        return
+    db = SessionLocal()
+    try:
+        rows = db.query(UserLLMConfig).filter(UserLLMConfig.api_key.isnot(None)).all()
+        changed = 0
+        for row in rows:
+            if row.api_key and not is_encrypted(row.api_key):
+                row.api_key = encrypt_secret(row.api_key)
+                changed += 1
+        if changed:
+            db.commit()
+            logger.info("已加密 %s 条历史明文 LLM API Key", changed)
+    finally:
+        db.close()
+
+
+def _ensure_resume_fail_reason() -> None:
+    """给 resumes 补齐解析失败原因列。"""
+    insp = inspect(engine)
+    if not insp.has_table("resumes"):
+        return
+    cols = {c["name"] for c in insp.get_columns("resumes")}
+    if "fail_reason" not in cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE resumes ADD COLUMN fail_reason VARCHAR(512)"))
+        logger.info("已补齐 resumes.fail_reason 列")
+
+
+def _migrate_self_result_to_mastery() -> None:
+    """interview_questions.self_result 改名为 mastery（SQLite/MySQL 双兼容，幂等）。"""
+    insp = inspect(engine)
+    if not insp.has_table("interview_questions"):
+        return
+    cols = {c["name"] for c in insp.get_columns("interview_questions")}
+    if "self_result" not in cols or "mastery" in cols:
+        return
+    if engine.dialect.name == "sqlite":
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE interview_questions RENAME COLUMN self_result TO mastery"))
+    else:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE interview_questions "
+                    "CHANGE COLUMN self_result mastery VARCHAR(16) DEFAULT 'PARTIAL' NOT NULL"
+                )
+            )
+    logger.info("已将 interview_questions.self_result 重命名为 mastery")
+
+
+def _migrate_interview_session_columns() -> None:
+    """让 interview_questions / interview_reviews 支持独立会话与合并后的模型字段。"""
+    _add_columns_if_missing(
+        "interview_questions",
+        {
+            "session_id": "INTEGER",
+            "category": "VARCHAR(64)",
+            "mastery": "VARCHAR(16) DEFAULT 'PARTIAL'",
+            "knowledge_point": "VARCHAR(512)",
+            "source": "VARCHAR(16) DEFAULT 'USER'",
+            "sort_order": "INTEGER DEFAULT 0",
+        },
+    )
+    _add_columns_if_missing(
+        "interview_reviews",
+        {
+            "session_id": "INTEGER",
+            "status": "VARCHAR(16) DEFAULT 'RUNNING'",
+            "source": "VARCHAR(16)",
+            "model_name": "VARCHAR(64)",
+            "summary": "TEXT",
+            "dimensions_json": "TEXT",
+            "weak_points_json": "TEXT",
+            "review_points_json": "TEXT",
+            "knowledge_points_json": "TEXT",
+            "review_advice": "TEXT",
+            "error_message": "VARCHAR(512)",
+            "duration_ms": "INTEGER",
+            "is_latest": "BOOLEAN DEFAULT 1",
+            "agent_task_id": "INTEGER",
+            "finished_at": "DATETIME",
+        },
+    )
+
+    # MySQL 才需要放宽 interview_id 非空约束；SQLite 历史表已按可空建，空表由 create_all 覆盖。
+    if engine.dialect.name != "sqlite":
+        for table_name in ("interview_questions", "interview_reviews"):
+            if not inspect(engine).has_table(table_name):
+                continue
+            cols = {c["name"]: c for c in inspect(engine).get_columns(table_name)}
+            interview_col = cols.get("interview_id")
+            if interview_col is not None and interview_col.get("nullable") is False:
+                with engine.begin() as conn:
+                    conn.execute(
+                        text(f"ALTER TABLE {table_name} MODIFY COLUMN interview_id INTEGER NULL")
+                    )
+                logger.info("已放宽 %s.interview_id 为可空", table_name)
+
+
 def ensure_schema() -> None:
     """给已有库补齐新增列（create_all 不会 ALTER）。"""
     _ensure_job_sources_columns()
     _ensure_interviews_columns()
     _ensure_llm_config_columns()
+    _encrypt_legacy_llm_keys()
+    _ensure_resume_fail_reason()
+    _migrate_self_result_to_mastery()
+    _migrate_interview_session_columns()

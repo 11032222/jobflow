@@ -96,8 +96,8 @@
             </el-table-column>
             <el-table-column label="自评" width="120">
               <template #default="{ row }">
-                <el-tag :type="SELF_RESULT_TAG[row.self_result] || 'info'" size="small" effect="plain">
-                  {{ label(SELF_RESULT, row.self_result) }}
+                <el-tag :type="MASTERY_TAG[row.mastery] || 'info'" size="small" effect="plain">
+                  {{ label(MASTERY, row.mastery) }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -233,8 +233,8 @@
           <el-input v-model="questionForm.my_answer" type="textarea" :rows="3" placeholder="当时是怎么答的" />
         </el-form-item>
         <el-form-item label="自评">
-          <el-select v-model="questionForm.self_result" style="width: 100%">
-            <el-option v-for="o in selfResultOptions" :key="o.value" :label="o.label" :value="o.value" />
+          <el-select v-model="questionForm.mastery" style="width: 100%">
+            <el-option v-for="o in masteryOptions" :key="o.value" :label="o.label" :value="o.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="分类">
@@ -266,7 +266,7 @@ import {
 import {
   INTERVIEW_RESULT, INTERVIEW_RESULT_TAG, INTERVIEW_STATUS, INTERVIEW_STATUS_TAG,
   INTERVIEW_TRANSITIONS, INTERVIEW_TYPE, REVIEW_SOURCE, REVIEW_STATUS, ROUND_TYPE,
-  SELF_RESULT, SELF_RESULT_TAG, label, options,
+  MASTERY, MASTERY_TAG, label, options,
 } from '@/constants/interview'
 
 const route = useRoute()
@@ -278,13 +278,13 @@ const interview = ref(null)
 const questions = ref([])
 const review = ref({ status: 'NONE', dimensions: [], weak_points: [], review_points: [] })
 const statusLoading = ref('')
-const selfResultOptions = options(SELF_RESULT)
+const masteryOptions = options(MASTERY)
 
 const questionDialog = ref(false)
 const editingQuestion = ref(null)
 const savingQuestion = ref(false)
 const emptyQuestion = {
-  question: '', my_answer: '', self_result: 'PARTIAL', category: '', knowledge_point: '',
+  question: '', my_answer: '', mastery: 'PARTIAL', category: '', knowledge_point: '',
 }
 const questionForm = reactive({ ...emptyQuestion })
 
@@ -369,7 +369,7 @@ function openQuestionDialog(row) {
   Object.assign(questionForm, emptyQuestion, row ? {
     question: row.question,
     my_answer: row.my_answer || '',
-    self_result: row.self_result,
+    mastery: row.mastery,
     category: row.category || '',
     knowledge_point: row.knowledge_point || '',
   } : {})

@@ -1,7 +1,8 @@
-"""面试记录、面试问题、面试复盘与状态流转事件表。
+"""面试记录、面试问题、面试复盘、面试会话与状态流转事件表。
 
 对应《概要设计说明书》7.1 核心实体中的 Interview / InterviewQuestion / InterviewReview，
-InterviewEvent 为状态流转审计，与已有 ApplicationEvent 对称。
+InterviewEvent 为状态流转审计，与已有 ApplicationEvent 对称；
+InterviewSession 为独立于面试日程的对话/复盘会话（本地增量）。
 """
 from datetime import datetime
 
@@ -28,11 +29,11 @@ ROUND_TYPES = ["TECHNICAL", "HR", "BOSS", "CROSS", "WRITTEN"]
 # 面试结果
 INTERVIEW_RESULTS = ["PASS", "FAIL", "PENDING"]
 
-# 面试问题自评（文档 3.10：已掌握 / 回答不完整 / 完全不会）
-SELF_RESULTS = ["MASTERED", "PARTIAL", "FAILED"]
+# 面试问题掌握度（文档 3.10：已掌握 / 回答不完整 / 完全不会）
+MASTERY_VALUES = ["MASTERED", "PARTIAL", "FAILED"]
 
-# 自评 -> 掌握度分值，Interview Agent 与知识库聚合共用
-SELF_RESULT_SCORE: dict[str, float] = {"MASTERED": 1.0, "PARTIAL": 0.5, "FAILED": 0.0}
+# 掌握度 -> 分值，Interview Agent 与知识库聚合共用
+MASTERY_SCORE: dict[str, float] = {"MASTERED": 1.0, "PARTIAL": 0.5, "FAILED": 0.0}
 
 # 复盘任务状态
 REVIEW_STATUSES = ["RUNNING", "SUCCESS", "FAILED"]
@@ -65,18 +66,41 @@ class Interview(Base):
     )
 
 
+class InterviewSession(Base):
+    """一次完整面试对话/复盘会话：对应一段录音、一次会议录屏或手动录入的问答集合。"""
+
+    __tablename__ = "interview_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    company_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    job_title: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    interview_id: Mapped[int | None] = mapped_column(ForeignKey("interviews.id"), nullable=True)
+    source: Mapped[str] = mapped_column(String(32), default="manual")  # recording / upload / manual
+    raw_transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class InterviewQuestion(Base):
     """面试问题记录（文档 3.10：问题 / 我的回答 / 结果）。"""
 
     __tablename__ = "interview_questions"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    interview_id: Mapped[int] = mapped_column(ForeignKey("interviews.id"), index=True)
+    interview_id: Mapped[int | None] = mapped_column(ForeignKey("interviews.id"), nullable=True, index=True)
+    session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("interview_sessions.id"), nullable=True, index=True
+    )
     # 有意冗余：面试知识库需跨全部面试聚合，冗余后可单表 GROUP BY，无需 JOIN
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     question: Mapped[str] = mapped_column(Text)
     my_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
-    self_result: Mapped[str] = mapped_column(String(16), default="PARTIAL")  # 见 SELF_RESULTS
+    mastery: Mapped[str] = mapped_column(String(16), default="PARTIAL")  # 见 MASTERY_VALUES
     category: Mapped[str | None] = mapped_column(String(64), nullable=True)  # 问题分类
     knowledge_point: Mapped[str | None] = mapped_column(String(512), nullable=True)  # 需复习知识点
     source: Mapped[str] = mapped_column(String(16), default="USER")  # USER/AGENT，人工可接管标记
@@ -93,7 +117,10 @@ class InterviewReview(Base):
     __tablename__ = "interview_reviews"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    interview_id: Mapped[int] = mapped_column(ForeignKey("interviews.id"), index=True)
+    interview_id: Mapped[int | None] = mapped_column(ForeignKey("interviews.id"), nullable=True, index=True)
+    session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("interview_sessions.id"), nullable=True, index=True
+    )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     status: Mapped[str] = mapped_column(String(16), default="RUNNING")  # 见 REVIEW_STATUSES
     source: Mapped[str | None] = mapped_column(String(16), nullable=True)  # LLM/RULE
@@ -102,6 +129,8 @@ class InterviewReview(Base):
     dimensions_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # 考察方向 + 星级
     weak_points_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     review_points_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    knowledge_points_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # 需复习知识点
+    review_advice: Mapped[str | None] = mapped_column(Text, nullable=True)  # 整体复盘建议
     error_message: Mapped[str | None] = mapped_column(String(512), nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_latest: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -89,6 +89,32 @@ export const getInterviewReview = (id) => request.get(`/interviews/${id}/review`
 // ===== 面试知识库（跨面试聚合能力画像）=====
 export const getInterviewKnowledge = () => request.get('/interviews/knowledge')
 
+// ===== 面试会话 / 知识库 =====
+export const getInterviewSessions = () => request.get('/interview-sessions')
+export const createInterviewSession = (data) => request.post('/interview-sessions', data)
+export const getInterviewSession = (id) => request.get(`/interview-sessions/${id}`)
+export const updateInterviewSession = (id, data) => request.put(`/interview-sessions/${id}`, data)
+export const deleteInterviewSession = (id) => request.delete(`/interview-sessions/${id}`)
+export const createSessionQuestion = (sessionId, data) =>
+  request.post(`/interview-sessions/${sessionId}/questions`, data)
+export const updateSessionQuestion = (sessionId, questionId, data) =>
+  request.put(`/interview-sessions/${sessionId}/questions/${questionId}`, data)
+export const deleteSessionQuestion = (sessionId, questionId) =>
+  request.delete(`/interview-sessions/${sessionId}/questions/${questionId}`)
+export const getSessionReview = (sessionId) => request.get(`/interview-sessions/${sessionId}/review`)
+export const generateSessionReview = (sessionId) =>
+  request.post(`/interview-sessions/${sessionId}/review`)
+export const transcribeSession = (file, meta = {}) => {
+  const form = new FormData()
+  form.append('file', file)
+  if (meta.title) form.append('title', meta.title)
+  if (meta.company_name) form.append('company_name', meta.company_name)
+  if (meta.job_title) form.append('job_title', meta.job_title)
+  if (meta.interview_id) form.append('interview_id', meta.interview_id)
+  if (meta.source) form.append('source', meta.source)
+  return request.post('/interview-sessions/transcribe', form)
+}
+
 // ===== Agent 任务 =====
 export const getTasks = (params) => request.get('/tasks', { params })
 export const getTask = (id) => request.get(`/tasks/${id}`)

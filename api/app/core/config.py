@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 1440
 
+    # 敏感凭据加密（未配置时回退 JWT_SECRET）
+    DATA_ENCRYPTION_KEY: str = ""
+
     # Redis（可选增强）
     REDIS_URL: str = "redis://localhost:6379/0"
 

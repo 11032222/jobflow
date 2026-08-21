@@ -56,7 +56,7 @@ def _collect_questions(db: Session, interview_id: int) -> list[dict]:
             "id": r.id,
             "question": r.question,
             "my_answer": r.my_answer,
-            "self_result": r.self_result,
+            "mastery": r.mastery,
             "category": r.category if r.source == "USER" else None,
             "knowledge_point": r.knowledge_point if r.source == "USER" else None,
         }
