@@ -1,6 +1,6 @@
 # JobFlow 智能求职辅助系统
 
-前后端分离的桌面端求职辅助系统：简历 → 求职画像 → 岗位发现 → 匹配推荐 → 邮件投递 → 状态跟踪 → 面试管理。
+前后端分离的桌面端求职辅助系统：简历 → 求职画像 → 岗位发现 → 匹配推荐 → 邮件投递 → 状态跟踪 → 面试复盘 → 能力沉淀。
 
 - **前端**：Vue3 + Element Plus + Pinia + Electron（Vite 开发端口 5174）
 - **后端**：FastAPI + SQLAlchemy 2.0 + JWT（端口 8000）
@@ -28,6 +28,7 @@
 │   │   ├── collectors/  # 平台适配器（zhaopin / zhipin / mock）
 │   │   └── services/    # 邮件投递 / 状态机 / 匹配引擎 / 采集导入 / 简历解析
 │   ├── scripts/seed.py  # 模拟数据填充脚本（演示账号 admin / 123456）
+│   ├── scripts/seed_interviews.py  # 面试问题/复盘演示数据（不删除已有数据）
 │   └── .env             # 环境变量（不提交）
 ├── web/                 # Vue3 + Electron 前端
 │   ├── electron/        # Electron 主进程
@@ -44,6 +45,8 @@
 
 - `start-jobflow.bat`：启动后端 + 前端 + 桌面窗口（已在运行的服务会自动跳过）
 - `stop-jobflow.bat`：一键关闭所有 JobFlow 服务与窗口
+
+> 启动脚本只起服务，不填数据。首次使用请先跑一次 `python api/scripts/seed.py` 填充演示数据。
 
 ### 1. 后端
 
@@ -86,6 +89,17 @@ npm run electron:build                  # 生成 release/ 下的安装程序
 |---|---|
 | admin | 123456 |
 
+## 演示数据
+
+```bash
+cd api
+python scripts/seed.py        # 一键填充演示数据（用户/岗位/简历/投递/面试/复盘全套）
+```
+
+> 注意：`seed.py` 会先清空岗位、投递、面试等业务数据再重新填充（用户保留）。
+> 如果你已经采集了自己的岗位数据不想被清掉，可以只跑 `python scripts/seed_interviews.py`，
+> 它只给已有面试补充问题与复盘，不删任何数据。
+
 ## 核心功能
 
 - **简历管理**：上传 PDF / DOCX / TXT 简历；一键**解析**（Resume Agent：LLM 或规则引擎提取基本信息、技能、教育/工作经历）；维护求职画像与求职偏好
@@ -93,8 +107,9 @@ npm run electron:build                  # 生成 release/ 下的安装程序
 - **岗位库**：关键词/城市/学历/经验/类型/平台多条件筛选，来源可追溯，收藏、详情
 - **智能推荐**：基于画像与偏好的多维度匹配（技能/经历/学历/偏好），输出匹配分、推荐等级（S/A/B/C/D）与推荐理由；配置 LLM 后由 **Matching Agent** 生成可解释推荐理由与优劣势
 - **投递看板**：状态机 PENDING → SUBMITTING → SUBMITTED → WAITING → TEST/INTERVIEW/OFFER/REJECTED/CLOSED，全程事件记录；邮件投递后可在演示收件箱验证
-- **面试管理**：面试日程、轮次、状态、反馈
-- **任务中心**：Agent 任务状态展示（RESUME_PARSE / JOB_SEARCH / JOB_MATCH / COMPANY_ANALYZE / JOB_APPLY）
+- **面试管理与复盘**：面试日程与状态机 SCHEDULED → IN_PROGRESS → COMPLETED → REVIEWED（含 CANCELLED），全程事件记录；面试详情页录入**面试问题 / 我的回答 / 自评**（已掌握 / 回答不完整 / 完全不会）；面试完成后自动触发 **Interview Agent** 复盘，输出考察方向、掌握度星级、薄弱项与需复习知识点；未配置 LLM 时自动降级规则引擎，功能不中断
+- **面试知识库**：跨面试聚合个人能力画像（分类 × 掌握度星级），标记薄弱方向，并按面试时间前后期对比给出**进步 / 退步趋势**
+- **任务中心**：Agent 任务状态展示（RESUME_PARSE / JOB_SEARCH / JOB_MATCH / COMPANY_ANALYZE / JOB_APPLY / INTERVIEW_REVIEW）
 - **大模型配置**：设置页填写 OpenAI 兼容服务（通义千问 / 智谱 GLM / DeepSeek / OpenAI 预设），支持测试连接；未配置时自动走规则引擎
 
 ## 平台采集说明

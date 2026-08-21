@@ -1,4 +1,4 @@
-"""投递与面试模型。"""
+"""投递模型。"""
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
@@ -47,27 +47,4 @@ class ApplicationEventOut(BaseModel):
     created_at: datetime
 
 
-class InterviewIn(BaseModel):
-    application_id: int | None = None
-    company_id: int | None = None
-    job_id: int | None = None
-    interview_type: str | None = None
-    round_no: int = 1
-    scheduled_at: datetime | None = None
-    status: str = "SCHEDULED"
-    contact_person: str | None = None
-    contact_phone: str | None = None
-    address: str | None = None
-    meeting_url: str | None = None
-    notes: str | None = None
-    feedback: str | None = None
-
-
-class InterviewOut(InterviewIn):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    user_id: int
-    created_at: datetime
-    company_name: str | None = None
-    job_title: str | None = None
+# 面试相关 Schema 已拆分至 app/schemas/interview.py

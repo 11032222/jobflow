@@ -69,6 +69,25 @@ export const getInterviews = () => request.get('/interviews')
 export const createInterview = (data) => request.post('/interviews', data)
 export const updateInterview = (id, data) => request.put(`/interviews/${id}`, data)
 export const deleteInterview = (id) => request.delete(`/interviews/${id}`)
+export const getInterview = (id) => request.get(`/interviews/${id}`)
+export const updateInterviewStatus = (id, data) =>
+  request.post(`/interviews/${id}/status`, data)
+
+// ===== 面试问题记录 =====
+export const getInterviewQuestions = (id) => request.get(`/interviews/${id}/questions`)
+export const createInterviewQuestion = (id, data) =>
+  request.post(`/interviews/${id}/questions`, data)
+export const updateInterviewQuestion = (id, qid, data) =>
+  request.put(`/interviews/${id}/questions/${qid}`, data)
+export const deleteInterviewQuestion = (id, qid) =>
+  request.delete(`/interviews/${id}/questions/${qid}`)
+
+// ===== 面试复盘 =====
+export const triggerInterviewReview = (id) => request.post(`/interviews/${id}/review`)
+export const getInterviewReview = (id) => request.get(`/interviews/${id}/review`)
+
+// ===== 面试知识库（跨面试聚合能力画像）=====
+export const getInterviewKnowledge = () => request.get('/interviews/knowledge')
 
 // ===== Agent 任务 =====
 export const getTasks = (params) => request.get('/tasks', { params })

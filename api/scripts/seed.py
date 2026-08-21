@@ -11,14 +11,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.core.database import Base, SessionLocal, engine  # noqa: E402
+from app.core.database import Base, SessionLocal, engine, ensure_schema  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.models.agent_task import AgentLog, AgentTask  # noqa: E402
 from app.models.application import Application, ApplicationEvent  # noqa: E402
 from app.models.company import Company  # noqa: E402
 from app.models.favorite import Favorite  # noqa: E402
-from app.models.interview import Interview  # noqa: E402
+from app.models.interview import (  # noqa: E402
+    Interview,
+    InterviewEvent,
+    InterviewQuestion,
+    InterviewReview,
+)
 from app.models.job import Job  # noqa: E402
 from app.models.job_source import JobSource  # noqa: E402
 from app.models.match_result import MatchResult  # noqa: E402
@@ -518,7 +523,8 @@ def create_interviews(db, user: User, apps: list[Application]) -> None:
             application_id=app.id,
             company_id=job.company_id,
             job_id=job.id,
-            interview_type="视频面试" if i % 2 == 0 else "技术面",
+            interview_type="VIDEO" if i % 2 == 0 else "PHONE",
+            round_type="TECHNICAL" if i % 2 == 0 else "HR",
             round_no=1,
             scheduled_at=datetime.now() + timedelta(days=2 + i * 3, hours=10),
             status="SCHEDULED",
@@ -533,11 +539,14 @@ def seed_all() -> None:
     print("=== JobFlow 模拟数据填充开始 ===")
     # 确保数据表存在（与 main.py startup 行为一致）
     Base.metadata.create_all(bind=engine)
+    # 老库补齐新增列，保证 seed 可以在服务未启动过的情况下独立运行
+    ensure_schema()
     db = SessionLocal()
     try:
         # 清空业务数据（保留 users 以保持登录状态）
         for model in (
-            Interview, ApplicationEvent, Application, MatchResult, Favorite,
+            InterviewQuestion, InterviewReview, InterviewEvent, Interview,
+            ApplicationEvent, Application, MatchResult, Favorite,
             JobSource, AgentLog, AgentTask, Job, Preference,
             ProfileExperience, ProfileSkill, CandidateProfile, Resume,
         ):
@@ -545,27 +554,33 @@ def seed_all() -> None:
         db.commit()
 
         user = create_demo_user(db)
-        print(f"[1/7] 演示用户: {user.username} / {DEMO_PASSWORD}")
+        print(f"[1/8] 演示用户: {user.username} / {DEMO_PASSWORD}")
 
         companies = create_companies(db)
-        print(f"[2/7] 公司: {len(companies)} 家")
+        print(f"[2/8] 公司: {len(companies)} 家")
 
         jobs = create_jobs(db, companies)
-        print(f"[3/7] 岗位: {len(jobs)} 条")
+        print(f"[3/8] 岗位: {len(jobs)} 条")
 
         resume = create_resume(db, user)
-        print(f"[4/7] 简历: {resume.file_name}")
+        print(f"[4/8] 简历: {resume.file_name}")
 
         profile = create_profile(db, user, resume)
-        print(f"[5/7] 求职画像: {profile.name}（{profile.title}）")
+        print(f"[5/8] 求职画像: {profile.name}（{profile.title}）")
 
         pref = create_preference(db, user)
-        print("[6/7] 求职偏好已设置")
+        print("[6/8] 求职偏好已设置")
 
         create_match(db, user, profile, pref, jobs)
         apps = create_applications(db, user, jobs)
         create_interviews(db, user, apps)
-        print(f"[7/7] 匹配/投递({len(apps)}条)/面试数据完成")
+        print(f"[7/8] 匹配/投递({len(apps)}条)/面试数据完成")
+
+        # 面试问题、状态流转与复盘（模块自带的演示数据，不删任何东西）
+        from seed_interviews import seed_interview_demo
+
+        print("[8/8] 面试问题与复盘：")
+        seed_interview_demo(db, user)
 
         print("=== 填充完成 ===")
         print("  登录账号: admin / 123456")

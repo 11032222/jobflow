@@ -20,6 +20,11 @@ def create_task(db: Session, user_id: int, task_type: str, **input_data) -> Agen
     return task
 
 
+def get_task(db: Session, task_id: int | None) -> AgentTask | None:
+    """按 id 取任务，id 为空或不存在返回 None。"""
+    return db.get(AgentTask, task_id) if task_id else None
+
+
 def set_status(
     db: Session,
     task: AgentTask,

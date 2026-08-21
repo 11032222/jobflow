@@ -14,6 +14,7 @@ const routes = [
       { path: 'recommendations', name: 'Recommendations', component: () => import('@/views/Recommendations.vue'), meta: { title: '智能推荐' } },
       { path: 'applications', name: 'Applications', component: () => import('@/views/Applications.vue'), meta: { title: '投递看板' } },
       { path: 'interviews', name: 'Interviews', component: () => import('@/views/Interviews.vue'), meta: { title: '面试管理' } },
+      { path: 'interviews/:id', name: 'InterviewDetail', component: () => import('@/views/InterviewDetail.vue'), meta: { title: '面试详情' } },
       { path: 'tasks', name: 'Tasks', component: () => import('@/views/Tasks.vue'), meta: { title: '任务中心' } },
       { path: 'settings', name: 'Settings', component: () => import('@/views/Settings.vue'), meta: { title: '设置' } },
     ],

@@ -69,6 +69,11 @@ class LLMService:
     def is_available(self, user_id: int | None = None) -> bool:
         return self._resolve(user_id) is not None
 
+    def active_model(self, user_id: int | None = None) -> str | None:
+        """当前生效的模型名，未配置返回 None（供上层记录 Agent 溯源）。"""
+        cfg = self._resolve(user_id)
+        return cfg.get("model") if cfg else None
+
     def _resolve(self, user_id: int | None = None) -> dict | None:
         cfg = get_user_llm_config(user_id)
         if cfg:

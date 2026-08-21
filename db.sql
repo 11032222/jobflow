@@ -295,6 +295,9 @@ CREATE TABLE `interviews` (
   `round_no` int NOT NULL,
   `scheduled_at` datetime DEFAULT NULL,
   `status` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `interviewer` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `result` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `round_type` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `contact_person` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `contact_phone` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `address` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -316,12 +319,86 @@ CREATE TABLE `interviews` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for `interview_questions` / `interview_reviews` / `interview_events`
+-- 面试管理模块新增（概要设计说明书 7.1 核心实体）
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+DROP TABLE IF EXISTS `interview_questions`;
+CREATE TABLE `interview_questions` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `interview_id` int NOT NULL,
+  `user_id` int NOT NULL,
+  `question` text NOT NULL,
+  `my_answer` text,
+  `self_result` varchar(16) NOT NULL,
+  `category` varchar(64) DEFAULT NULL,
+  `knowledge_point` varchar(512) DEFAULT NULL,
+  `source` varchar(16) NOT NULL,
+  `sort_order` int NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `ix_interview_questions_interview_id` (`interview_id`),
+  KEY `ix_interview_questions_user_id` (`user_id`),
+  CONSTRAINT `interview_questions_ibfk_1` FOREIGN KEY (`interview_id`) REFERENCES `interviews` (`id`),
+  CONSTRAINT `interview_questions_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+DROP TABLE IF EXISTS `interview_reviews`;
+CREATE TABLE `interview_reviews` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `interview_id` int NOT NULL,
+  `user_id` int NOT NULL,
+  `status` varchar(16) NOT NULL,
+  `source` varchar(16) DEFAULT NULL,
+  `model_name` varchar(64) DEFAULT NULL,
+  `summary` text,
+  `dimensions_json` text,
+  `weak_points_json` text,
+  `review_points_json` text,
+  `error_message` varchar(512) DEFAULT NULL,
+  `duration_ms` int DEFAULT NULL,
+  `is_latest` tinyint(1) NOT NULL,
+  `agent_task_id` int DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `finished_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `agent_task_id` (`agent_task_id`),
+  KEY `ix_interview_reviews_interview_id` (`interview_id`),
+  KEY `ix_interview_reviews_user_id` (`user_id`),
+  CONSTRAINT `interview_reviews_ibfk_1` FOREIGN KEY (`interview_id`) REFERENCES `interviews` (`id`),
+  CONSTRAINT `interview_reviews_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`),
+  CONSTRAINT `interview_reviews_ibfk_3` FOREIGN KEY (`agent_task_id`) REFERENCES `agent_tasks` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+DROP TABLE IF EXISTS `interview_events`;
+CREATE TABLE `interview_events` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `interview_id` int NOT NULL,
+  `from_status` varchar(32) DEFAULT NULL,
+  `to_status` varchar(32) NOT NULL,
+  `operator` varchar(16) NOT NULL,
+  `comment` varchar(500) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `ix_interview_events_interview_id` (`interview_id`),
+  CONSTRAINT `interview_events_ibfk_1` FOREIGN KEY (`interview_id`) REFERENCES `interviews` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Dumping data for table `interviews`
 --
 
 LOCK TABLES `interviews` WRITE;
 /*!40000 ALTER TABLE `interviews` DISABLE KEYS */;
-INSERT INTO `interviews` VALUES (1,1,1,1,1,'视频面试',1,'2026-08-20 07:30:01','SCHEDULED',NULL,NULL,NULL,'https://meeting.example.com/jobflow-demo','准备项目经历与技术栈问题',NULL,'2026-08-17 21:30:01','2026-08-17 21:30:01'),(2,1,2,1,2,'技术面',1,'2026-08-23 07:30:01','SCHEDULED',NULL,NULL,NULL,NULL,'准备项目经历与技术栈问题',NULL,'2026-08-17 21:30:01','2026-08-17 21:30:01'),(3,1,3,2,3,'视频面试',1,'2026-08-26 07:30:01','SCHEDULED',NULL,NULL,NULL,NULL,'准备项目经历与技术栈问题',NULL,'2026-08-17 21:30:01','2026-08-17 21:30:01'),(4,1,NULL,NULL,NULL,'电话面试',1,'2026-08-12 00:00:00','SCHEDULED','','','','','','','2026-08-17 21:53:39','2026-08-17 21:53:39');
+INSERT INTO `interviews` (`id`,`user_id`,`application_id`,`company_id`,`job_id`,`interview_type`,`round_no`,`scheduled_at`,`status`,`contact_person`,`contact_phone`,`address`,`meeting_url`,`notes`,`feedback`,`created_at`,`updated_at`) VALUES (1,1,1,1,1,'视频面试',1,'2026-08-20 07:30:01','SCHEDULED',NULL,NULL,NULL,'https://meeting.example.com/jobflow-demo','准备项目经历与技术栈问题',NULL,'2026-08-17 21:30:01','2026-08-17 21:30:01'),(2,1,2,1,2,'技术面',1,'2026-08-23 07:30:01','SCHEDULED',NULL,NULL,NULL,NULL,'准备项目经历与技术栈问题',NULL,'2026-08-17 21:30:01','2026-08-17 21:30:01'),(3,1,3,2,3,'视频面试',1,'2026-08-26 07:30:01','SCHEDULED',NULL,NULL,NULL,NULL,'准备项目经历与技术栈问题',NULL,'2026-08-17 21:30:01','2026-08-17 21:30:01'),(4,1,NULL,NULL,NULL,'电话面试',1,'2026-08-12 00:00:00','SCHEDULED','','','','','','','2026-08-17 21:53:39','2026-08-17 21:53:39');
 /*!40000 ALTER TABLE `interviews` ENABLE KEYS */;
 UNLOCK TABLES;
 
