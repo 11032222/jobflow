@@ -35,6 +35,8 @@ class MatchResult(Base):
     recommend_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     strengths: Mapped[str | None] = mapped_column(Text, nullable=True)
     weaknesses: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hard_fail: Mapped[bool] = mapped_column(default=False)
+    hard_fail_reasons: Mapped[str | None] = mapped_column(Text, nullable=True)
     detail_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="PENDING")  # PENDING/RUNNING/SUCCESS/FAILED
     model_used: Mapped[str | None] = mapped_column(String(64), nullable=True)  # rule/llm

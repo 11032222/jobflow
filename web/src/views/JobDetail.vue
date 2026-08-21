@@ -12,7 +12,8 @@
             <div class="job-title-block">
               <h2 class="job-title">{{ job.title }}</h2>
               <div class="job-sub">
-                <el-tag size="small" effect="plain">{{ job.job_type }}</el-tag>
+                <el-tag size="small" effect="plain">{{ job.job_type || '全职' }}</el-tag>
+                <el-tag v-if="job.status && job.status !== 'ACTIVE'" size="small" type="info" effect="plain">{{ statusText(job.status) }}</el-tag>
                 <span class="company">{{ job.company_name }}</span>
                 <span class="dot">·</span>
                 <span>{{ job.city }}{{ job.district ? '·' + job.district : '' }}</span>
@@ -22,23 +23,23 @@
           </div>
 
           <div class="meta-grid">
-            <div class="meta-item"><span class="meta-label">学历要求</span><b>{{ job.education }}</b></div>
-            <div class="meta-item"><span class="meta-label">经验要求</span><b>{{ job.experience }}</b></div>
-            <div class="meta-item"><span class="meta-label">发布时间</span><b>{{ (job.publish_time || '').slice(0, 10) }}</b></div>
+            <div class="meta-item"><span class="meta-label">学历要求</span><b>{{ job.education || '不限' }}</b></div>
+            <div class="meta-item"><span class="meta-label">经验要求</span><b>{{ job.experience || '不限' }}</b></div>
+            <div class="meta-item"><span class="meta-label">发布时间</span><b>{{ (job.publish_time || '').slice(0, 10) || '-' }}</b></div>
           </div>
 
           <div class="tag-row">
-            <el-tag v-for="t in job.tags" :key="t" size="small" type="info" effect="plain">{{ t }}</el-tag>
+            <el-tag v-for="t in displayTags" :key="t" size="small" type="info" effect="plain">{{ t }}</el-tag>
           </div>
 
           <el-divider content-position="left">职位描述</el-divider>
-          <p class="desc-text">{{ job.description || job.responsibilities || '暂无职位描述' }}</p>
+          <pre class="desc-pre">{{ job.description || '暂无职位描述' }}</pre>
 
           <el-divider content-position="left">岗位职责</el-divider>
-          <p class="desc-text">{{ job.responsibilities || (job.description ? '详见职位描述' : '暂无') }}</p>
+          <pre class="desc-pre">{{ job.responsibilities || '暂无' }}</pre>
 
           <el-divider content-position="left">任职要求</el-divider>
-          <p class="desc-text">{{ job.requirements || (job.description ? '详见职位描述' : '暂无') }}</p>
+          <pre class="desc-pre">{{ job.requirements || '暂无' }}</pre>
         </section>
       </div>
 
@@ -70,10 +71,18 @@
             <el-button v-if="!job.match" type="primary" size="small" :loading="matching" @click="handleMatch">开始分析</el-button>
           </header>
           <template v-if="job.match">
+            <el-alert
+              v-if="job.match.hard_fail"
+              type="error"
+              :closable="false"
+              show-icon
+              style="margin-bottom: 12px"
+              :title="(job.match.hard_fail_reasons || []).join('；') || '存在硬性要求不满足'"
+            />
             <div class="match-head">
               <el-progress type="circle" :percentage="Number(job.match.match_score || 0)" :width="104" :stroke-width="9" :color="scoreColor(job.match.match_score)">
                 <template #default>
-                  <div class="match-score">{{ job.match.match_score }}</div>
+                  <div class="match-score">{{ Math.round(Number(job.match.match_score || 0)) }}</div>
                   <div class="match-level">推荐等级 {{ job.match.recommend_level }}</div>
                 </template>
               </el-progress>
@@ -110,23 +119,30 @@
         <section class="panel">
           <header class="panel-header">
             <span class="panel-title"><el-icon><OfficeBuilding /></el-icon>公司信息</span>
+            <el-button type="primary" link size="small" :loading="researching" @click="handleResearch">联网补充</el-button>
           </header>
           <div class="company-head">
             <el-avatar :size="44" shape="square" class="company-avatar">{{ job.company_name?.[0] }}</el-avatar>
             <div>
               <div class="company-name">{{ job.company_name }}</div>
-              <div class="company-meta">{{ job.industry || '-' }} · {{ job.company_type || '-' }}</div>
+              <div class="company-meta">{{ company.industry || job.industry || '-' }} · {{ company.company_type || '-' }}</div>
             </div>
           </div>
           <div class="company-rows">
             <div class="company-row"><span>公司规模</span><b>{{ company.scale || '-' }}</b></div>
-            <div class="company-row"><span>所在城市</span><b>{{ company.address || '-' }}</b></div>
+            <div class="company-row"><span>所在城市</span><b>{{ company.address || job.city || '-' }}</b></div>
+            <div class="company-row" v-if="company.website">
+              <span>公司官网</span>
+              <a :href="company.website" target="_blank" rel="noreferrer">{{ hostOf(company.website) }}</a>
+            </div>
             <div class="company-row">
-              <span>风险等级</span>
-              <el-tag :type="riskType(company.risk_level)" size="small">{{ riskText(company.risk_level) }}</el-tag>
+              <span>资料状态</span>
+              <el-tag :type="company.profile_status === 'ANALYZED' ? 'success' : 'info'" size="small" effect="plain">
+                {{ company.profile_status === 'ANALYZED' ? '已联网补充' : '待补充' }}
+              </el-tag>
             </div>
           </div>
-          <p class="desc-text company-desc">{{ company.description || '暂无公司介绍' }}</p>
+          <p class="desc-text company-desc">{{ company.description || '暂无公司介绍，可点击「联网补充」检索公开信息。' }}</p>
         </section>
       </div>
     </div>
@@ -156,12 +172,12 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, DataAnalysis, Link, OfficeBuilding, Promotion, Star } from '@element-plus/icons-vue'
 import {
-  addFavorite, createApplication, getCompany, getJob, getResumes, matchJob, removeFavorite, submitApplication,
+  addFavorite, createApplication, getCompany, getJob, getResumes, matchJob, removeFavorite, researchCompany, submitApplication,
 } from '@/api'
 
 const route = useRoute()
@@ -169,7 +185,13 @@ const job = ref(null)
 const company = ref({})
 const resumes = ref([])
 const matching = ref(false)
+const researching = ref(false)
 const applying = ref(false)
+const displayTags = computed(() => {
+  const tags = job.value?.tags || []
+  const skip = new Set([job.value?.education, job.value?.experience, job.value?.job_type].filter(Boolean))
+  return tags.filter((t) => t && !skip.has(t))
+})
 const applyDialogVisible = ref(false)
 const applyResumeId = ref(null)
 const applyNote = ref('')
@@ -194,6 +216,32 @@ function scoreColor(score) {
   if (score >= 60) return '#0d9488'
   if (score >= 40) return '#d97706'
   return '#dc2626'
+}
+function statusText(status) {
+  return { ACTIVE: '招聘中', CLOSED: '已关闭', EXPIRED: '已过期', OFFLINE: '已下线' }[status] || status
+}
+function hostOf(url) {
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
+}
+
+async function handleResearch() {
+  if (!job.value?.company_id) {
+    ElMessage.warning('没有关联公司')
+    return
+  }
+  researching.value = true
+  try {
+    company.value = await researchCompany(job.value.company_id)
+    ElMessage.success('已补充公司公开信息')
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.detail || '检索失败')
+  } finally {
+    researching.value = false
+  }
 }
 
 async function toggleFavorite() {
@@ -303,6 +351,19 @@ onMounted(load)
 
 .tag-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
 .desc-text { color: #334155; line-height: 1.8; font-size: 14px; }
+.desc-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #334155;
+  line-height: 1.85;
+  font-size: 14px;
+  font-family: inherit;
+  margin: 0;
+  background: var(--jf-primary-softer);
+  border: 1px solid var(--jf-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
 
 .action-btns { display: flex; flex-direction: column; gap: 10px; }
 .action-btns .apply-btn { width: 100%; margin-left: 0; }

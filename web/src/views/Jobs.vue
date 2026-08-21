@@ -72,9 +72,9 @@
         <el-table-column label="薪资" width="130">
           <template #default="{ row }"><span class="salary-text">{{ row.salary_text }}</span></template>
         </el-table-column>
-        <el-table-column label="学历/经验" width="130">
+        <el-table-column label="学历/经验" min-width="128">
           <template #default="{ row }">
-            <div class="edu-exp">{{ row.education }} · {{ row.experience }}</div>
+            <div class="edu-exp">{{ row.education || '-' }} · {{ row.experience || '-' }}</div>
             <el-tag v-if="row.job_type === '实习'" size="small" type="warning" effect="plain">实习</el-tag>
           </template>
         </el-table-column>
@@ -83,13 +83,20 @@
             <el-tag :type="sourceType(row.source)" size="small" effect="plain">{{ sourceText(row.source) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="匹配" width="120">
+        <el-table-column label="匹配" min-width="176" class-name="match-col">
           <template #default="{ row }">
             <template v-if="row.match">
-              <span class="match-cell">
-                <span class="score-badge" :class="levelClass(row.match.recommend_level)">{{ row.match.match_score }}</span>
+              <div class="match-cell" @click.stop>
+                <span class="score-badge" :class="levelClass(row.match.recommend_level)">{{ Math.round(Number(row.match.match_score || 0)) }}</span>
                 <el-tag :type="levelType(row.match.recommend_level)" size="small" effect="plain">{{ row.match.recommend_level }}</el-tag>
-              </span>
+                <el-tooltip
+                  v-if="row.match.hard_fail"
+                  :content="(row.match.hard_fail_reasons || []).join('；') || '硬性要求不满足'"
+                  placement="top"
+                >
+                  <el-tag type="danger" size="small" effect="dark" class="hard-tag">硬性不符</el-tag>
+                </el-tooltip>
+              </div>
             </template>
             <el-button v-else link type="primary" size="small" @click.stop="handleMatch(row)">分析</el-button>
           </template>
@@ -395,7 +402,20 @@ onMounted(load)
 .job-tags { margin-top: 4px; display: flex; gap: 4px; }
 .company-name { color: var(--jf-ink-soft); }
 .edu-exp { color: #334155; }
-.match-cell { display: inline-flex; align-items: center; gap: 6px; }
+.match-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.4;
+  white-space: normal;
+}
+.hard-tag { max-width: 100%; }
+:deep(.match-col .cell) {
+  overflow: visible;
+  white-space: normal;
+  line-height: 1.4;
+}
 .score-badge {
   min-width: 34px; text-align: center; padding: 2px 6px; border-radius: 6px;
   font-size: 13px; font-weight: 700; color: #fff;

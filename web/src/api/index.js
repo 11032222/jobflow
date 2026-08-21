@@ -51,6 +51,7 @@ export const launchZhipinChrome = () => request.post('/jobs/collectors/zhipin/la
 
 // ===== 公司 =====
 export const getCompany = (id) => request.get(`/companies/${id}`)
+export const researchCompany = (id) => request.post(`/companies/${id}/research`)
 
 // ===== 推荐 =====
 export const getRecommendations = (params) => request.get('/recommendations', { params })

@@ -9,7 +9,7 @@
       <div v-if="items.length" class="rec-list">
         <div v-for="item in items" :key="item.id" class="rec-item hoverable" @click="$router.push(`/jobs/${item.id}`)">
           <div class="rec-rank">
-            <div class="score-badge" :class="levelClass(item.match?.recommend_level)">{{ item.match?.match_score ?? '-' }}</div>
+            <div class="score-badge" :class="levelClass(item.match?.recommend_level)">{{ item.match?.match_score != null ? Math.round(Number(item.match.match_score)) : '-' }}</div>
             <el-tag :type="levelType(item.match?.recommend_level)" size="small" effect="plain" class="level-tag">{{ item.match?.recommend_level ?? '-' }}</el-tag>
           </div>
           <div class="rec-body">
@@ -19,7 +19,10 @@
               <span class="rec-city"><el-icon><Location /></el-icon>{{ item.city }}</span>
               <span class="salary-text rec-salary">{{ item.salary_text }}</span>
             </div>
-            <div class="rec-reason">{{ item.match?.recommend_reason }}</div>
+            <div class="rec-reason">
+              <el-tag v-if="item.match?.hard_fail" type="danger" size="small" effect="plain" style="margin-right: 6px">硬性不符</el-tag>
+              {{ item.match?.recommend_reason }}
+            </div>
             <div class="rec-tags">
               <el-tag v-for="t in item.tags?.slice(0, 5)" :key="t" size="small" type="info" effect="plain">{{ t }}</el-tag>
             </div>

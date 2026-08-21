@@ -28,6 +28,7 @@ class JobOut(BaseModel):
     publish_time: datetime | None = None
     source: str
     source_url: str | None = None
+    status: str | None = None
     is_duplicate: bool = False
     is_favorite: bool = False
     is_applied: bool = False
@@ -69,5 +70,18 @@ class MatchOut(BaseModel):
     recommend_reason: str | None = None
     strengths: str | None = None
     weaknesses: str | None = None
+    hard_fail: bool = False
+    hard_fail_reasons: list[str] = []
     status: str
     model_used: str | None = None
+
+    @field_validator("hard_fail_reasons", mode="before")
+    @classmethod
+    def _parse_hard_fail_reasons(cls, v):
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                return parsed if isinstance(parsed, list) else [v]
+            except (json.JSONDecodeError, TypeError):
+                return [v] if v else []
+        return v or []

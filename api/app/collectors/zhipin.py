@@ -10,6 +10,7 @@ import httpx
 from app.collectors.base import PlatformAdapter
 from app.collectors.zhipin_cdp import crawl_jobs_sync, get_debug_port, launch_debug_chrome
 from app.collectors.zhaopin import parse_salary
+from app.services.job_text import format_job_text, parse_job_status, split_job_description
 
 logger = logging.getLogger(__name__)
 
@@ -101,29 +102,6 @@ def _job_type_text(raw) -> str | None:
 
 
 
-_RESP_HEADINGS = {"岗位职责", "工作职责", "职位描述", "职责描述", "主要职责", "你需要做", "你将负责"}
-_REQ_HEADINGS = {"任职要求", "岗位要求", "任职资格", "工作要求", "职位要求", "我们需要你", "希望你具备"}
-
-
-def _split_job_description(text: str | None) -> tuple[str | None, str | None]:
-    """把详情页描述拆成「岗位职责 / 任职要求」两段。"""
-    if not text or not text.strip():
-        return None, None
-    parts = re.split(r"(岗位职责|工作职责|职位描述|职责描述|主要职责|你需要做|你将负责|任职要求|岗位要求|任职资格|工作要求|职位要求|我们需要你|希望你具备)", text.strip())
-    resp: list[str] = []
-    req: list[str] = []
-    current: str | None = None
-    for part in parts:
-        key = part.strip()
-        if key in _RESP_HEADINGS:
-            current = "resp"
-        elif key in _REQ_HEADINGS:
-            current = "req"
-        elif key and current == "resp":
-            resp.append(key)
-        elif key and current == "req":
-            req.append(key)
-    return ("\n".join(resp) or None), ("\n".join(req) or None)
 def _normalize_raw(raw: dict) -> dict | None:
     title = (raw.get("title") or raw.get("jobName") or "").strip()
     source_id = raw.get("encrypt_job_id") or raw.get("encryptJobId") or raw.get("jobId")
@@ -142,14 +120,14 @@ def _normalize_raw(raw: dict) -> dict | None:
         path = f"https://www.zhipin.com/job_detail/{source_id}.html"
 
     detail = raw.get("detail") or {}
-    description = (
+    description = format_job_text(
         raw.get("desc")
         or raw.get("description")
         or raw.get("postDescription")
         or detail.get("description")
         or ""
-    ).strip()
-    responsibilities, requirements = _split_job_description(description)
+    )
+    responsibilities, requirements = split_job_description(description)
     welfare = detail.get("welfare") or []
     merged_tags = list(labels)
     for tag in welfare:
@@ -158,6 +136,14 @@ def _normalize_raw(raw: dict) -> dict | None:
     if not salary_text and detail.get("salary"):
         salary_text = detail.get("salary")
         salary_min, salary_max = parse_salary(salary_text)
+    status_text = str(detail.get("status") or "")
+    status = "CLOSED" if detail.get("closed") else parse_job_status(status_text, description)
+    company_info = {
+        "description": detail.get("company_intro") or None,
+        "scale": detail.get("company_scale") or None,
+        "industry": detail.get("company_industry") or None,
+        "company_type": detail.get("company_stage") or None,
+    }
 
     return PlatformAdapter._build_job(
         title=title,
@@ -167,10 +153,10 @@ def _normalize_raw(raw: dict) -> dict | None:
         salary_min=salary_min,
         salary_max=salary_max,
         salary_text=salary_text,
-        education=raw.get("degree") or raw.get("jobDegree"),
-        experience=raw.get("experience") or raw.get("jobExperience"),
+        education=raw.get("degree") or detail.get("degree") or raw.get("jobDegree"),
+        experience=raw.get("experience") or detail.get("experience") or raw.get("jobExperience"),
         job_type=_job_type_text(raw.get("job_type") or raw.get("jobType")),
-        industry=None,
+        industry=company_info.get("industry"),
         tags=merged_tags,
         description=description or None,
         responsibilities=responsibilities,
@@ -179,6 +165,8 @@ def _normalize_raw(raw: dict) -> dict | None:
         source="zhipin",
         source_url=path,
         source_job_id=str(source_id),
+        status=status,
+        company_info=company_info,
     )
 
 
@@ -200,16 +188,19 @@ class ZhipinAdapter(PlatformAdapter):
 
         raw_jobs: list[dict] = []
         http_err = None
-        try:
-            raw_jobs = self._search_http(keyword, city_code, salary_code, pages, page_size)
-        except Exception as exc:  # noqa: BLE001
-            http_err = exc
-            logger.warning("BOSS HTTP 采集失败，尝试 CDP: %s", exc)
-
-        if not raw_jobs:
-            raw_jobs = crawl_jobs_sync(keyword, city_code, salary_code, pages)
-            if http_err:
-                logger.info("BOSS 已回退 CDP，HTTP 错误已忽略")
+        # 调试 Chrome 已就绪时直接走 CDP，跳过必定失败的公开接口
+        if get_debug_port():
+            raw_jobs = crawl_jobs_sync(keyword, city_code, salary_code, pages, with_detail=True, detail_max=8)
+        else:
+            try:
+                raw_jobs = self._search_http(keyword, city_code, salary_code, pages, page_size)
+            except Exception as exc:  # noqa: BLE001
+                http_err = exc
+                logger.warning("BOSS HTTP 采集失败，尝试 CDP: %s", exc)
+            if not raw_jobs:
+                raw_jobs = crawl_jobs_sync(keyword, city_code, salary_code, pages, with_detail=True, detail_max=8)
+                if http_err:
+                    logger.info("BOSS 已回退 CDP，HTTP 错误已忽略")
 
         jobs = []
         for raw in raw_jobs:
@@ -240,7 +231,7 @@ class ZhipinAdapter(PlatformAdapter):
         if salary_code:
             params_base["salary"] = salary_code
         url = "https://www.zhipin.com/wapi/zpgeek/search/joblist.json"
-        with httpx.Client(timeout=20, headers=DEFAULT_HEADERS, follow_redirects=True) as client:
+        with httpx.Client(timeout=6, headers=DEFAULT_HEADERS, follow_redirects=True) as client:
             for p in range(1, pages + 1):
                 resp = client.get(url, params={**params_base, "page": p})
                 resp.raise_for_status()

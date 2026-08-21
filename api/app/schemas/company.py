@@ -16,6 +16,7 @@ class CompanyOut(BaseModel):
     address: str | None = None
     website: str | None = None
     description: str | None = None
+    profile_json: str | None = None
     risk_level: str
     risk_reasons: str | None = None
     profile_status: str

@@ -12,7 +12,7 @@ if "%CHROME%"=="" (
   pause
   exit /b 1
 )
-start "" "%CHROME%" --remote-debugging-port=9222 --user-data-dir="%PROFILE%" --disable-blink-features=AutomationControlled "https://www.zhipin.com/web/user/?ka=header-login"
+start "" "%CHROME%" --remote-debugging-port=9222 --user-data-dir="%PROFILE%" --disable-blink-features=AutomationControlled --no-first-run --no-default-browser-check "https://www.zhipin.com/web/user/?ka=header-login"
 echo 已启动调试 Chrome。请在弹出窗口登录 BOSS 直聘，再回到 JobFlow 采集。
 
 

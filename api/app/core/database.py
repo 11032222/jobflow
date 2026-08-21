@@ -298,3 +298,10 @@ def ensure_schema() -> None:
     _ensure_resume_fail_reason()
     _migrate_self_result_to_mastery()
     _migrate_interview_session_columns()
+    _add_columns_if_missing(
+        "match_results",
+        {
+            "hard_fail": "BOOLEAN DEFAULT 0",
+            "hard_fail_reasons": "TEXT",
+        },
+    )

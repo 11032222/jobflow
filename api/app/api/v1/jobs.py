@@ -13,7 +13,7 @@ from app.models.favorite import Favorite
 from app.models.job import Job
 from app.models.match_result import MatchResult
 from app.models.user import User
-from app.schemas.job import JobImportRequest, JobOut
+from app.schemas.job import JobImportRequest, JobOut, MatchOut
 
 router = APIRouter()
 
@@ -25,14 +25,27 @@ def _to_out(
     include_match: bool = True,
     profile_id: int | None = None,
 ) -> JobOut:
+    from app.services.job_text import format_job_text, split_job_description
+
     out = JobOut.model_validate(job)
     if job.company_id:
         company = db.get(Company, job.company_id)
         out.company_name = company.name if company else None
+        if company and not out.industry:
+            out.industry = company.industry
     try:
         out.tags = json.loads(job.tags or "[]")
     except (json.JSONDecodeError, TypeError):
         out.tags = []
+    out.description = format_job_text(job.description) or job.description
+    duties = format_job_text(job.responsibilities) or job.responsibilities
+    reqs = format_job_text(job.requirements) or job.requirements
+    if out.description and not (duties and reqs):
+        split_d, split_r = split_job_description(out.description)
+        duties = duties or split_d
+        reqs = reqs or split_r
+    out.responsibilities = duties
+    out.requirements = reqs
     out.is_favorite = (
         db.query(Favorite)
         .filter(Favorite.user_id == user_id, Favorite.job_id == job.id)
@@ -52,7 +65,7 @@ def _to_out(
             .first()
         )
         if match:
-            out.match = match
+            out.match = MatchOut.model_validate(match)
     return out
 
 
@@ -71,7 +84,10 @@ def list_jobs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Job).filter(Job.is_active.is_(True))
+    query = db.query(Job).filter(
+        Job.is_active.is_(True),
+        or_(Job.status.is_(None), Job.status.notin_(["CLOSED", "EXPIRED", "OFFLINE"])),
+    )
     if keyword:
         like = f"%{keyword}%"
         query = query.join(Company, Job.company_id == Company.id, isouter=True).filter(
@@ -222,6 +238,7 @@ def import_jobs(
     query = resolve_search_query(db, current_user.id, data)
     tasks = []
     labels = []
+    source_ids: list[int] = []
     for platform in platforms:
         source = JobSource(
             user_id=current_user.id,
@@ -236,9 +253,18 @@ def import_jobs(
         db.add(source)
         db.commit()
         db.refresh(source)
-        background_tasks.add_task(import_jobs_from_platform, source.id)
+        source_ids.append(source.id)
         tasks.append({"platform": platform, "job_source_id": source.id, "status": "QUEUED"})
         labels.append(PLATFORM_LABELS.get(platform, platform))
+
+    def _run_imports(ids: list[int]) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        workers = max(1, min(len(ids), 3))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            list(pool.map(import_jobs_from_platform, ids))
+
+    background_tasks.add_task(_run_imports, source_ids)
 
     salary_hint = ""
     if query["salary_min"] or query["salary_max"]:

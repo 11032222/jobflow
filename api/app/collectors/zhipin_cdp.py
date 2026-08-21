@@ -85,16 +85,29 @@ DETAIL_EXTRACT_JS = r"""
 (() => {
   const $ = (s) => document.querySelector(s);
   const text = (el) => el ? el.innerText.replace(/\s+/g, ' ').trim() : '';
+  const textNl = (el) => el ? el.innerText.replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim() : '';
   const o = {};
-  o.status = text($('.job-status span')) || text($('.job-status'));
+  o.status = text($('.job-status span')) || text($('.job-status')) || '';
+  const bodyText = (document.body && document.body.innerText) || '';
+  if (!o.status) {
+    const m = bodyText.match(/停止招聘|职位已关闭|职位已下线|结束招聘|招聘中|立即沟通|立即投递/);
+    o.status = m ? m[0] : '';
+  }
   const nameEl = $('.job-primary .name');
   o.title = nameEl ? text(nameEl.querySelector('h1')) : '';
   o.salary = nameEl ? text(nameEl.querySelector('.salary')) : '';
   o.company = text($('.brand-name')).replace(/^代招公司[:：]?\s*/, '');
   o.city = text($('.text-city'));
-  o.experience = text($('.text-experiece'));
+  o.experience = text($('.text-experiece')) || text($('.text-experience'));
   o.degree = text($('.text-degree'));
-  o.description = text($('.job-sec-text'));
+  const secs = Array.from(document.querySelectorAll('.job-sec'));
+  secs.forEach((sec) => {
+    const h = text(sec.querySelector('h3, .title, h2'));
+    const body = textNl(sec.querySelector('.text, .job-sec-text, .job-sec-wrap')) || textNl(sec);
+    if (/职位描述|岗位职责|职位详情/.test(h) && body) o.description = body;
+    if (/公司介绍|公司简介/.test(h) && body) o.company_intro = body;
+  });
+  if (!o.description) o.description = textNl($('.job-sec-text'));
   const tags = new Set();
   ['.job-banner .job-tags', '.job-banner .tag-all', '.job-tags', '.job-tags .tag-all']
     .forEach(sel => {
@@ -106,6 +119,14 @@ DETAIL_EXTRACT_JS = r"""
       });
     });
   o.welfare = [...tags];
+  const sider = $('.sider-company');
+  if (sider) {
+    o.company_scale = text(sider.querySelector('p:nth-of-type(2)')) || '';
+    const bits = Array.from(sider.querySelectorAll('p, a')).map(x => text(x)).filter(Boolean);
+    o.company_meta = bits.slice(0, 8);
+    o.company_stage = bits.find(t => /融资|未融资|上市|天使|A轮|B轮|C轮/.test(t)) || '';
+    o.company_industry = bits.find(t => t.length <= 12 && /互联|软件|科技|金融|教育|医疗|电商|制造/.test(t)) || '';
+  }
   const bi = $('.job-boss-info');
   if (bi) {
     o.boss_name = text(bi.querySelector('.name'));
@@ -120,6 +141,7 @@ DETAIL_EXTRACT_JS = r"""
   const chat = $('.btn-startchat');
   o.chat_redirect = chat ? (chat.getAttribute('redirect-url') || '') : '';
   o.url = location.href;
+  o.closed = /停止招聘|职位已关闭|已下线|结束招聘|已失效/.test(o.status + bodyText.slice(0, 400));
   return JSON.stringify(o);
 })()
 """
@@ -130,10 +152,11 @@ class CDP:
         self.ws = ws
         self.mid = 0
         self.waiters = []
+        self._write_lock = asyncio.Lock()
 
     @classmethod
     async def connect(cls, port: int) -> "CDP":
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
             info = (await client.get(f"http://127.0.0.1:{port}/json/version")).json()
         ws = await websockets.connect(info["webSocketDebuggerUrl"], max_size=128 * 1024 * 1024)
         cdp = cls(ws)
@@ -151,13 +174,14 @@ class CDP:
                         break
 
     async def send(self, method, params=None, session_id=None, timeout=60):
-        self.mid += 1
-        msg = {"id": self.mid, "method": method, "params": params or {}}
-        if session_id:
-            msg["sessionId"] = session_id
-        fut = asyncio.get_running_loop().create_future()
-        self.waiters.append((self.mid, fut))
-        await self.ws.send(json.dumps(msg))
+        async with self._write_lock:
+            self.mid += 1
+            msg = {"id": self.mid, "method": method, "params": params or {}}
+            if session_id:
+                msg["sessionId"] = session_id
+            fut = asyncio.get_running_loop().create_future()
+            self.waiters.append((self.mid, fut))
+            await self.ws.send(json.dumps(msg))
         return await asyncio.wait_for(fut, timeout)
 
     async def eval_js(self, js, sid):
@@ -180,20 +204,37 @@ class CDP:
         await self.send("Page.addScriptToEvaluateOnNewDocument", {"source": VISIBILITY_JS}, sid)
         return target_id, sid
 
-    async def close_page(self, target_id):
+    async def close_target(self, target_id):
         try:
             await self.send("Target.closeTarget", {"targetId": target_id})
         except Exception:
             pass
+
+    async def close_page(self, target_id):
+        await self.close_target(target_id)
         try:
             await self.ws.close()
         except Exception:
             pass
 
+    async def wait_eval(self, js: str, sid, *, timeout: float = 8, interval: float = 0.25):
+        """轮询执行 JS，直到返回真值或超时。"""
+        deadline = asyncio.get_event_loop().time() + timeout
+        last = None
+        while asyncio.get_event_loop().time() < deadline:
+            try:
+                last = await self.eval_js(js, sid)
+            except Exception:
+                last = None
+            if last:
+                return last
+            await asyncio.sleep(interval)
+        return last
+
 
 def cdp_port_alive(port: int = DEFAULT_PORT) -> bool:
     try:
-        r = httpx.get(f"http://127.0.0.1:{port}/json/version", timeout=0.4)
+        r = httpx.get(f"http://127.0.0.1:{port}/json/version", timeout=0.4, trust_env=False)
         if r.status_code != 200:
             return False
         data = r.json()
@@ -263,6 +304,8 @@ def launch_debug_chrome() -> dict:
         f"--remote-debugging-port={DEFAULT_PORT}",
         f"--user-data-dir={LOCAL_PROFILE}",
         "--disable-blink-features=AutomationControlled",
+        "--no-first-run",
+        "--no-default-browser-check",
         f"{BASE_URL}/web/user/?ka=header-login",
     ]
     kwargs: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
@@ -270,6 +313,7 @@ def launch_debug_chrome() -> dict:
         kwargs["creationflags"] = (
             getattr(subprocess, "DETACHED_PROCESS", 0)
             | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            | getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
         )
     else:
         kwargs["start_new_session"] = True
@@ -292,24 +336,48 @@ async def fetch_detail(cdp, sid, job: dict) -> dict:
     full = url if url.startswith("http") else f"{BASE_URL}{url}"
     try:
         await cdp.send("Page.navigate", {"url": full}, sid)
-        for _ in range(40):
-            await asyncio.sleep(1)
+        deadline = asyncio.get_event_loop().time() + 6
+        d: dict = {}
+        while asyncio.get_event_loop().time() < deadline:
             raw = await cdp.eval_js(DETAIL_EXTRACT_JS, sid)
             try:
                 d = json.loads(raw or "{}")
             except json.JSONDecodeError:
                 d = {}
             if d.get("description") or d.get("title"):
-                job["detail"] = d
-                job["desc"] = d.get("description", "") or job.get("desc", "")
-                job["welfare"] = d.get("welfare") or job.get("welfare", [])
-                if d.get("salary"):
-                    job["salary"] = d["salary"]
-                return job
+                break
+            await asyncio.sleep(0.25)
+        if d.get("description") or d.get("title"):
+            job["detail"] = d
+            job["desc"] = d.get("description", "") or job.get("desc", "")
+            job["welfare"] = d.get("welfare") or job.get("welfare", [])
+            if d.get("salary"):
+                job["salary"] = d["salary"]
+            return job
     except Exception as exc:  # noqa: BLE001
         logger.warning("BOSS 详情抓取失败 %s: %s", url, exc)
     job["desc"] = job.get("desc", "")
     return job
+
+
+async def fetch_details_parallel(cdp: CDP, jobs: list[dict], concurrency: int = 4) -> None:
+    """开多个标签并行抓详情，避免一个个排队。"""
+    sem = asyncio.Semaphore(max(1, concurrency))
+
+    async def _one(job: dict) -> None:
+        async with sem:
+            tid, sid = await cdp.create_page()
+            try:
+                await cdp.send("Page.enable", {}, sid)
+                await fetch_detail(cdp, sid, job)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("BOSS 并行详情失败: %s", exc)
+            finally:
+                await cdp.close_target(tid)
+
+    if not jobs:
+        return
+    await asyncio.gather(*(_one(j) for j in jobs))
 
 
 async def crawl_jobs(query: str, city_code: str, salary_code: str | None, max_pages: int, with_detail: bool = True, detail_max: int = 60) -> list[dict]:
@@ -320,7 +388,7 @@ async def crawl_jobs(query: str, city_code: str, salary_code: str | None, max_pa
             "（chrome --remote-debugging-port=9222）并登录 BOSS 直聘后再采集。"
         )
 
-    async with asyncio.timeout(900):
+    async with asyncio.timeout(180):
         cdp = await CDP.connect(port)
         tid, sid = await cdp.create_page()
         try:
@@ -331,12 +399,13 @@ async def crawl_jobs(query: str, city_code: str, salary_code: str | None, max_pa
             logger.info("BOSS CDP 导航: %s", url)
             await cdp.send("Page.navigate", {"url": url}, sid)
 
-            for _ in range(60):
-                await asyncio.sleep(1)
-                n = await cdp.eval_js("document.querySelectorAll('.job-card-box, .job-card-wrapper, .job-card-left').length", sid)
-                if n and n > 0:
-                    break
-            else:
+            n = await cdp.wait_eval(
+                "document.querySelectorAll('.job-card-box, .job-card-wrapper, .job-card-left').length",
+                sid,
+                timeout=8,
+                interval=0.25,
+            )
+            if not n:
                 body = await cdp.eval_js("(document.body ? document.body.innerText : '').slice(0, 200)", sid)
                 raise RuntimeError(f"BOSS 页面未出现职位卡片，可能未登录或触发风控。正文: {body!r}")
 
@@ -346,12 +415,11 @@ async def crawl_jobs(query: str, city_code: str, salary_code: str | None, max_pa
             stall = 0
 
             for rnd in range(1, max(1, max_pages) + 1):
-                for _ in range(random.randint(3, 6)):
-                    delta = random.randint(300, 900)
-                    await cdp.eval_js(f"window.scrollBy(0,{delta})", sid)
-                    await asyncio.sleep(random.uniform(0.5, 1.2))
+                for _ in range(2):
+                    await cdp.eval_js("window.scrollBy(0, 900)", sid)
+                    await asyncio.sleep(0.3)
                 await cdp.eval_js("window.scrollTo(0, document.body.scrollHeight)", sid)
-                await asyncio.sleep(2)
+                await asyncio.sleep(0.5)
 
                 raw = await cdp.eval_js(EXTRACT_JS, sid)
                 try:
@@ -380,14 +448,11 @@ async def crawl_jobs(query: str, city_code: str, salary_code: str | None, max_pa
                     stall = 0
                 prev_count = len(jobs)
                 if rnd < max_pages:
-                    await asyncio.sleep(random.uniform(1.5, 3.0))
+                    await asyncio.sleep(0.4)
             if with_detail and all_jobs:
-                todo = all_jobs[:max(1, detail_max)]
-                logger.info("BOSS 抓取详情 %s/%s", len(todo), len(all_jobs))
-                for i, job in enumerate(todo, 1):
-                    await fetch_detail(cdp, sid, job)
-                    if i < len(todo):
-                        await asyncio.sleep(random.uniform(1.5, 3.0))
+                todo = all_jobs[: max(1, min(detail_max, 8))]
+                logger.info("BOSS 并行抓取详情 %s/%s", len(todo), len(all_jobs))
+                await fetch_details_parallel(cdp, todo)
             return all_jobs
         finally:
             await cdp.close_page(tid)

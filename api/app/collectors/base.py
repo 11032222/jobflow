@@ -50,6 +50,8 @@ class PlatformAdapter(ABC):
         source: str,
         source_url: str,
         source_job_id: str,
+        status: str = "ACTIVE",
+        company_info: dict | None = None,
     ) -> dict:
         """统一标准化 Job 字典。"""
         return {
@@ -72,4 +74,6 @@ class PlatformAdapter(ABC):
             "source": source,
             "source_url": source_url,
             "source_job_id": source_job_id,
+            "status": status or "ACTIVE",
+            "company_info": company_info or {},
         }

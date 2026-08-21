@@ -15,6 +15,7 @@ from app.models.job import Job
 from app.models.job_source import JobSource
 from app.models.preference import Preference
 from app.models.profile import CandidateProfile
+from app.services.job_text import format_job_text, split_job_description
 
 logger = logging.getLogger(__name__)
 
@@ -156,23 +157,82 @@ def _salary_overlap(job: dict, salary_min: int | None, salary_max: int | None) -
     return True
 
 
+def _apply_company_info(company: Company, info: dict | None) -> None:
+    if not info:
+        return
+    if info.get("industry") and not company.industry:
+        company.industry = info["industry"]
+    if info.get("scale") and not company.scale:
+        company.scale = info["scale"]
+    if info.get("company_type") and not company.company_type:
+        company.company_type = info["company_type"]
+    if info.get("address") and not company.address:
+        company.address = info["address"]
+    if info.get("logo_url") and not company.logo_url:
+        company.logo_url = info["logo_url"]
+    desc = info.get("description")
+    if desc and (not company.description or "是一家" in (company.description or "") and len(company.description) < 40):
+        company.description = desc[:800]
+
+
 def _get_or_create_company(db: Session, name: str, info: dict | None) -> Company | None:
     if not name:
         return None
     company = db.query(Company).filter(Company.name == name).first()
     if company:
+        _apply_company_info(company, info)
         return company
+    info = info or {}
     company = Company(
         name=name,
-        industry=info.get("industry") if info else None,
-        company_type=None,
-        scale=info.get("scale") if info else None,
-        description=info.get("description") if info else None,
+        industry=info.get("industry"),
+        company_type=info.get("company_type"),
+        scale=info.get("scale"),
+        address=info.get("address"),
+        description=info.get("description"),
+        logo_url=info.get("logo_url"),
         profile_status="NOT_ANALYZED",
     )
     db.add(company)
     db.flush()
     return company
+
+
+def _fill_job_row(row: Job, job: dict, company: Company | None) -> None:
+    desc = format_job_text(job.get("description"))
+    duties = format_job_text(job.get("responsibilities")) or None
+    reqs = format_job_text(job.get("requirements")) or None
+    if desc and not (duties and reqs):
+        split_d, split_r = split_job_description(desc)
+        duties = duties or split_d
+        reqs = reqs or split_r
+    status = (job.get("status") or "ACTIVE").upper()
+    if status not in ("ACTIVE", "CLOSED", "EXPIRED"):
+        status = "ACTIVE"
+    row.title = job["title"]
+    row.company_id = company.id if company else None
+    row.city = job.get("city")
+    row.district = job.get("district")
+    row.salary_min = job.get("salary_min")
+    row.salary_max = job.get("salary_max")
+    row.salary_text = job.get("salary_text")
+    row.education = job.get("education")
+    row.experience = job.get("experience")
+    row.job_type = job.get("job_type")
+    row.industry = job.get("industry")
+    row.tags = _json_dumps(job.get("tags", [])) or row.tags
+    if duties:
+        row.responsibilities = duties
+    if reqs:
+        row.requirements = reqs
+    if desc:
+        row.description = desc
+    row.publish_time = job.get("publish_time") or row.publish_time
+    row.source_url = job.get("source_url")
+    row.status = status
+    row.is_active = status == "ACTIVE"
+    row.raw_data = _json_dumps(job)
+    row.updated_at = datetime.now()
 
 
 def import_jobs_from_platform(job_source_id: int) -> dict:
@@ -195,7 +255,15 @@ def _import(db: Session, job_source_id: int) -> dict:
     source.error_message = None
     db.commit()
 
-    stats = {"total_found": 0, "imported": 0, "duplicated": 0, "skipped": 0, "filtered": 0}
+    stats = {
+        "total_found": 0,
+        "imported": 0,
+        "updated": 0,
+        "closed": 0,
+        "duplicated": 0,
+        "skipped": 0,
+        "filtered": 0,
+    }
     try:
         adapter = get_adapter(source.platform)
         raw_jobs = adapter.search_jobs(
@@ -215,6 +283,8 @@ def _import(db: Session, job_source_id: int) -> dict:
                 stats["filtered"] += 1
                 continue
 
+            company = _get_or_create_company(db, job["company_name"], job.get("company_info"))
+            h = _dedup_hash(job)
             exists = (
                 db.query(Job)
                 .filter(
@@ -224,45 +294,41 @@ def _import(db: Session, job_source_id: int) -> dict:
                 .first()
             )
             if exists:
-                stats["skipped"] += 1
+                _fill_job_row(exists, job, company)
+                exists.dedup_hash = h
+                if exists.status == "CLOSED":
+                    stats["closed"] += 1
+                else:
+                    stats["updated"] += 1
                 continue
 
-            h = _dedup_hash(job)
             dup = db.query(Job).filter(Job.dedup_hash == h).first()
             if dup is not None or h in existing_hashes:
-                stats["duplicated"] += 1
+                # 跨平台重复：仍覆盖更新已有记录的详情（若新数据更完整）
+                if dup is not None and (job.get("description") or job.get("requirements")):
+                    if not dup.description or len(dup.description or "") < len(job.get("description") or ""):
+                        _fill_job_row(dup, job, company)
+                        stats["updated"] += 1
+                    else:
+                        stats["duplicated"] += 1
+                else:
+                    stats["duplicated"] += 1
                 existing_hashes.add(h)
                 continue
             existing_hashes.add(h)
 
-            company = _get_or_create_company(db, job["company_name"], None)
             new_job = Job(
-                title=job["title"],
-                company_id=company.id if company else None,
-                city=job.get("city"),
-                district=job.get("district"),
-                salary_min=job.get("salary_min"),
-                salary_max=job.get("salary_max"),
-                salary_text=job.get("salary_text"),
-                education=job.get("education"),
-                experience=job.get("experience"),
-                job_type=job.get("job_type"),
-                industry=job.get("industry"),
-                tags=_json_dumps(job.get("tags", [])),
-                responsibilities=job.get("responsibilities"),
-                requirements=job.get("requirements"),
-                description=job.get("description"),
-                publish_time=job.get("publish_time"),
                 source=job["source"],
-                source_url=job.get("source_url"),
                 source_job_id=job["source_job_id"],
                 dedup_hash=h,
                 is_duplicate=False,
-                status="ACTIVE",
-                raw_data=_json_dumps(job),
             )
+            _fill_job_row(new_job, job, company)
             db.add(new_job)
-            stats["imported"] += 1
+            if new_job.status == "CLOSED":
+                stats["closed"] += 1
+            else:
+                stats["imported"] += 1
 
         db.commit()
         source.total_found = stats["total_found"]
