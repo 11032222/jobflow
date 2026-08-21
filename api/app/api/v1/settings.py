@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.agents.llm import llm_service
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.crypto import decrypt_secret, encrypt_secret
 from app.models.system_config import UserLLMConfig
 from app.models.user import User
 
@@ -21,6 +22,7 @@ class LLMConfigIn(BaseModel):
     api_key: str = ""
     base_url: str = ""
     model: str = "qwen-plus"
+    asr_model: str = "whisper-1"
     enabled: bool = True
 
 
@@ -37,9 +39,10 @@ def _row_to_out(row: UserLLMConfig) -> LLMConfigOut:
         provider=row.provider or "",
         protocol=row.protocol or "openai-compatible",
         api_key="",
-        api_key_masked=_mask(row.api_key),
+        api_key_masked=_mask(decrypt_secret(row.api_key)),
         base_url=row.base_url or "",
         model=row.model or "qwen-plus",
+        asr_model=row.asr_model or "whisper-1",
         enabled=row.enabled,
         is_active=row.is_active,
     )
@@ -86,9 +89,10 @@ def create_model_config(
         name=(data.name or "模型配置").strip(),
         provider=(data.provider or "").strip(),
         protocol=data.protocol,
-        api_key=data.api_key.strip(),
+        api_key=encrypt_secret(data.api_key.strip()),
         base_url=(data.base_url or "").strip(),
         model=(data.model or "").strip() or "qwen-plus",
+        asr_model=(data.asr_model or "").strip() or "whisper-1",
         enabled=data.enabled,
         is_active=count == 0,
     )
@@ -111,9 +115,10 @@ def update_model_config(
     row.protocol = data.protocol
     # 未填写 api_key 时保留原值（前端只回显掩码）
     if data.api_key:
-        row.api_key = data.api_key.strip()
+        row.api_key = encrypt_secret(data.api_key.strip())
     row.base_url = (data.base_url or "").strip()
     row.model = (data.model or "").strip() or "qwen-plus"
+    row.asr_model = (data.asr_model or "").strip() or "whisper-1"
     row.enabled = data.enabled
     db.commit()
     db.refresh(row)
@@ -177,7 +182,7 @@ def test_saved_model_config(
         return {"ok": False, "error": "该配置缺少 API Key 或 Base URL"}
 
     tester = LLMService()
-    tester.global_api_key = row.api_key or ""
+    tester.global_api_key = decrypt_secret(row.api_key)
     tester.global_base_url = base_url
     tester.global_model = row.model or "qwen-plus"
     tester.global_protocol = (row.protocol or "openai-compatible").strip().lower()
@@ -212,6 +217,7 @@ def get_model_config(
             api_key_masked="",
             base_url="",
             model="qwen-plus",
+            asr_model="whisper-1",
             enabled=True,
             is_active=False,
         )
@@ -237,9 +243,10 @@ def save_model_config(
     row.provider = (data.provider or row.provider or "").strip()
     row.protocol = data.protocol
     if data.api_key:
-        row.api_key = data.api_key.strip()
+        row.api_key = encrypt_secret(data.api_key.strip())
     row.base_url = (data.base_url or "").strip()
     row.model = (data.model or "").strip() or "qwen-plus"
+    row.asr_model = (data.asr_model or "").strip() or "whisper-1"
     row.enabled = data.enabled
     db.commit()
     db.refresh(row)

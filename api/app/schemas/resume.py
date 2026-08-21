@@ -14,6 +14,7 @@ class ResumeOut(BaseModel):
     file_type: str
     file_size: int | None = None
     parse_status: str
+    fail_reason: str | None = None
     raw_text: str | None = None
     version: int
     created_at: datetime

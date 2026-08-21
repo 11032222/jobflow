@@ -27,12 +27,59 @@ def _norm_text(value: str | None) -> str:
     return text
 
 
+def _salary_bucket(value) -> str:
+    """把月薪（元）规整为整数 K（如 20000 → '20K'），用于跨平台薪资归一化。"""
+    if not value:
+        return "?"
+    try:
+        k = int(float(value) / 1000.0)
+    except (TypeError, ValueError):
+        return "?"
+    return f"{k}K"
+
+
+def _norm_salary(job: dict) -> str:
+    """归一化薪资：优先用解析后的 min/max，缺失时回退解析 salary_text。"""
+    lo = job.get("salary_min")
+    hi = job.get("salary_max")
+    if lo is None and hi is None:
+        text = (job.get("salary_text") or "").strip()
+        if not text:
+            return "?"
+        unit = 10000 if ("万" in text and "元" not in text) else 1
+        nums = [float(n) for n in re.findall(r"[\d.]+", text)]
+        if not nums:
+            return "?"
+        lo = nums[0] * unit
+        hi = nums[1] * unit if len(nums) >= 2 else lo
+    return f"{_salary_bucket(lo)}-{_salary_bucket(hi)}"
+
+
+def _norm_experience(value: str | None) -> str:
+    """归一化经验年限区间：'3-5年' → 3-5；'3年以上' → 3-；'经验不限' → any。"""
+    text = (value or "").strip().lower()
+    if not text or "不限" in text or "应届" in text and "年" not in text:
+        return "any"
+    years = [float(n) for n in re.findall(r"[\d.]+", text)]
+    if not years:
+        return "unknown"
+    lo = int(years[0])
+    hi = int(years[-1]) if len(years) > 1 else lo
+    return f"{lo}-{hi}"
+
+
 def _dedup_hash(job: dict) -> str:
-    """跨平台去重键：公司 + 职位 + 城市（忽略薪资文案差异）。"""
+    """跨平台去重键：公司 + 职位 + 城市 + 归一化薪资 + 经验区间。
+
+    薪资/经验都做格式归一化，因此 '20-30K' 与 '2-3万/月'、'3-5年' 与
+    '3到5年' 会被识别为同一岗位；不同薪资区间的同职位保留为不同岗位。
+    """
     raw = "|".join([
         _norm_text(job.get("company_name")),
         _norm_text(job.get("title")),
         _norm_text(job.get("city")),
+        _norm_salary(job),
+        _norm_experience(job.get("experience")),
     ])
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
 

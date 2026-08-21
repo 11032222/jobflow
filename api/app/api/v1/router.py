@@ -6,6 +6,7 @@ from app.api.v1 import (
     auth,
     companies,
     interviews,
+    interview_sessions,
     jobs,
     preferences,
     profiles,
@@ -28,6 +29,7 @@ api_router.include_router(companies.router, prefix="/companies", tags=["公司"]
 api_router.include_router(recommendations.router, prefix="/recommendations", tags=["推荐"])
 api_router.include_router(applications.router, prefix="/applications", tags=["投递"])
 api_router.include_router(interviews.router, prefix="/interviews", tags=["面试"])
+api_router.include_router(interview_sessions.router, prefix="/interview-sessions", tags=["面试会话"])
 api_router.include_router(tasks.router, prefix="/tasks", tags=["Agent任务"])
 api_router.include_router(system.router, prefix="/system", tags=["系统状态"])
 api_router.include_router(settings.router, prefix="/settings", tags=["模型配置"])

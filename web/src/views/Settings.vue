@@ -211,6 +211,11 @@
                   <label>Base URL</label>
                   <el-input v-model="modelForm.base_url" :placeholder="currentPreset.base_url || 'https://api.example.com/v1'" />
                 </div>
+                <div class="field span-2">
+                  <label>语音转写模型（ASR）</label>
+                  <el-input v-model="modelForm.asr_model" placeholder="whisper-1" />
+                  <span class="field-hint">用于面试问答语音转文字，需当前服务支持 /audio/transcriptions 接口</span>
+                </div>
                 <div class="field">
                   <label>启用模型服务</label>
                   <el-switch v-model="modelForm.enabled" />
@@ -353,7 +358,7 @@ const status = ref({ database: '', llm_available: false, llm_model: null })
 
 const modelForm = reactive({
   protocol: 'openai-compatible', api_key: '', api_key_masked: '',
-  base_url: '', model: 'qwen-plus', enabled: true,
+  base_url: '', model: 'qwen-plus', asr_model: 'whisper-1', enabled: true,
 })
 const preset = ref('qwen')
 const savingModel = ref(false)
@@ -461,6 +466,7 @@ function resetForm() {
   configName.value = '模型配置'
   modelForm.api_key = ''
   modelForm.api_key_masked = ''
+  modelForm.asr_model = 'whisper-1'
   modelForm.enabled = true
   modelTestResult.value = null
   selectProvider('qwen')
@@ -475,6 +481,7 @@ function editConfig(cfg) {
     api_key_masked: cfg.api_key_masked || '',
     base_url: cfg.base_url || '',
     model: cfg.model || '',
+    asr_model: cfg.asr_model || 'whisper-1',
     enabled: cfg.enabled !== false,
   })
   preset.value = detectPreset(cfg)
@@ -537,6 +544,7 @@ async function handleSaveModel() {
       api_key: modelForm.api_key,
       base_url: modelForm.base_url,
       model: modelForm.model,
+      asr_model: modelForm.asr_model,
       enabled: modelForm.enabled,
     }
     const data = isEdit ? await updateModelConfig(editingId.value, payload) : await createModelConfig(payload)
@@ -547,6 +555,7 @@ async function handleSaveModel() {
       api_key_masked: data.api_key_masked,
       base_url: data.base_url,
       model: data.model,
+      asr_model: data.asr_model || 'whisper-1',
       enabled: data.enabled,
     })
     preset.value = detectPreset(data)

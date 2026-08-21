@@ -35,6 +35,65 @@ def extract_text(file_path: str, file_type: str) -> str:
     return ""
 
 
+_IMAGE_MIME = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "webp": "image/webp",
+    "bmp": "image/bmp",
+    "gif": "image/gif",
+}
+
+
+def image_mime_type(file_type: str) -> str:
+    """根据 file_type 推断 MIME；默认 image/png。"""
+    return _IMAGE_MIME.get((file_type or "").lower(), "image/png")
+
+
+def ocr_extract_image(file_path: str) -> str:
+    """用本机可用的 OCR 引擎识别图片文字（RapidOCR → PaddleOCR → Tesseract）。"""
+    path = Path(file_path)
+    if not path.exists():
+        return ""
+
+    # 1) RapidOCR（纯 Python/ONNX，最轻量）
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+
+        engine = RapidOCR()
+        result, _ = engine(str(path))
+        if result:
+            return "\n".join(str(item[1]) for item in result if len(item) > 1)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("RapidOCR 不可用: %s", exc)
+
+    # 2) PaddleOCR
+    try:
+        from paddleocr import PaddleOCR
+
+        ocr = PaddleOCR(use_angle_cls=True, lang="ch", show_log=False)
+        result = ocr.ocr(str(path), cls=True)
+        lines = []
+        for page in result or []:
+            for item in page or []:
+                if item and len(item) > 0 and item[1]:
+                    lines.append(str(item[1][0]))
+        return "\n".join(lines)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("PaddleOCR 不可用: %s", exc)
+
+    # 3) Tesseract
+    try:
+        import pytesseract
+        from PIL import Image
+
+        return pytesseract.image_to_string(Image.open(str(path)), lang="chi_sim+eng")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Tesseract 不可用: %s", exc)
+
+    return ""
+
+
 def _to_date(value):
     if value is None:
         return None
@@ -118,15 +177,24 @@ def run_resume_parse(resume_id: int) -> None:
         resume.parse_status = "PARSING"
         db.commit()
 
-        text = extract_text(resume.file_path, resume.file_type)
-        resume.raw_text = text
-        result = resume_agent.parse(text, user_id=resume.user_id)
+        ftype = (resume.file_type or "").lower()
+        if ftype in _IMAGE_MIME:
+            # 图片简历：视觉大模型优先，OCR 兜底
+            result = resume_agent.parse_image(
+                resume.file_path, image_mime_type(ftype), user_id=resume.user_id
+            )
+        else:
+            text = extract_text(resume.file_path, resume.file_type)
+            resume.raw_text = text
+            result = resume_agent.parse(text, user_id=resume.user_id)
 
         if result["status"] == "SUCCESS" and result.get("profile"):
             _create_profile_from_result(db, resume.user_id, resume, result["profile"])
             resume.parse_status = "SUCCESS"
         else:
             resume.parse_status = "FAILED"
+            if result.get("message"):
+                resume.fail_reason = result["message"][:500]
         db.commit()
         logger.info("简历解析完成 resume_id=%s status=%s", resume_id, resume.parse_status)
     except Exception as exc:  # noqa: BLE001

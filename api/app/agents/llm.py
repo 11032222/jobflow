@@ -11,10 +11,47 @@ import re
 import httpx
 
 from app.core.config import settings
+from app.core.crypto import decrypt_secret
 
 logger = logging.getLogger(__name__)
 
 _LOCAL_BASE_URL_MARKERS = ("localhost", "127.0.0.1", "0.0.0.0")
+
+# 常见支持图片输入（视觉）的模型关键词。命中任一即认为可在 resume 图片解析中使用视觉能力。
+# 包含主要厂商：OpenAI GPT-4o/4.1、Anthropic Claude、Google Gemini、通义千问 VL、智谱 GLM-4V 等。
+VISION_MODEL_KEYWORDS = (
+    "gpt-4o",
+    "gpt-4.1",
+    "gpt-4-vision",
+    "gpt-4-turbo",
+    "o3",
+    "o4",
+    "vision",
+    "claude",
+    "gemini",
+    "qwen-vl",
+    "qwen2-vl",
+    "qwen3-vl",
+    "glm-4v",
+    "glm-4.5v",
+    "glm-4.6",
+    "internvl",
+    "minicpm-v",
+    "llama-3.2",
+    "doubao-1.5-vision",
+    "step-1v",
+    "kimi-latest",
+)
+
+
+def _content_type(content) -> str:
+    """返回 'text'（纯字符串）或 'parts'（OpenAI 风格多模态列表）。"""
+    return "parts" if isinstance(content, list) else "text"
+
+
+def _is_vision_model(model: str | None) -> bool:
+    model = (model or "").lower()
+    return any(keyword in model for keyword in VISION_MODEL_KEYWORDS)
 
 
 def get_user_llm_config(user_id: int | None) -> dict | None:
@@ -37,9 +74,10 @@ def get_user_llm_config(user_id: int | None) -> dict | None:
             local = any(marker in base_url for marker in _LOCAL_BASE_URL_MARKERS)
             if row.api_key or local:
                 return {
-                    "api_key": row.api_key or "",
+                    "api_key": decrypt_secret(row.api_key),
                     "base_url": base_url.rstrip("/"),
                     "model": row.model or "qwen-plus",
+                    "asr_model": row.asr_model or "whisper-1",
                     "protocol": (row.protocol or "openai-compatible").lower(),
                 }
     finally:
@@ -68,6 +106,13 @@ class LLMService:
 
     def is_available(self, user_id: int | None = None) -> bool:
         return self._resolve(user_id) is not None
+
+    def supports_vision(self, user_id: int | None = None) -> bool:
+        """当前配置的模型是否支持图片输入。"""
+        cfg = self._resolve(user_id)
+        if not cfg:
+            return False
+        return _is_vision_model(cfg.get("model"))
 
     def _resolve(self, user_id: int | None = None) -> dict | None:
         cfg = get_user_llm_config(user_id)
@@ -157,12 +202,25 @@ class LLMService:
         temperature: float,
         json_mode: bool,
     ) -> str | None:
-        system_parts = [m.get("content", "") for m in messages if m.get("role") == "system"]
+        system_parts = [
+            m.get("content", "")
+            if isinstance(m.get("content", ""), str)
+            else "\n".join(p.get("text", "") for p in m.get("content", []) if p.get("type") == "text")
+            for m in messages
+            if m.get("role") == "system"
+        ]
         system = "\n".join(system_parts) if system_parts else None
         if json_mode:
             instruction = "You are a JSON API. Return only valid JSON, no markdown code fences."
             system = f"{instruction}\n{system}" if system else instruction
-        conversation = [m for m in messages if m.get("role") in ("user", "assistant")]
+        conversation = [
+            {
+                "role": m["role"],
+                "content": self._anthropic_content(m.get("content", "")),
+            }
+            for m in messages
+            if m.get("role") in ("user", "assistant")
+        ]
         payload = {
             "model": model,
             "max_tokens": 4096,
@@ -195,10 +253,14 @@ class LLMService:
         json_mode: bool,
     ) -> str | None:
         system_text = "\n".join(
-            m["content"] for m in messages if m.get("role") == "system"
+            m["content"]
+            if isinstance(m.get("content", ""), str)
+            else "\n".join(p.get("text", "") for p in m["content"] if p.get("type") == "text")
+            for m in messages
+            if m.get("role") == "system"
         )
         contents = [
-            {"role": "user", "parts": [{"text": m["content"]}]}
+            {"role": "user", "parts": self._gemini_parts(m.get("content", ""))}
             for m in messages
             if m.get("role") in ("user", "assistant")
         ]
@@ -219,6 +281,51 @@ class LLMService:
             )
             resp.raise_for_status()
             return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+
+    @staticmethod
+    def _anthropic_content(content):
+        """把 OpenAI 风格 content（字符串或多模态列表）转成 Anthropic content blocks。"""
+        if isinstance(content, str):
+            return [{"type": "text", "text": content}]
+        blocks = []
+        for part in content:
+            ptype = part.get("type")
+            if ptype == "text":
+                blocks.append({"type": "text", "text": part.get("text", "")})
+            elif ptype == "image_url":
+                url = part.get("image_url", {}).get("url", "")
+                if url.startswith("data:"):
+                    header, _, data = url.partition(",")
+                    mime = header[5:].split(";")[0] or "image/png"
+                    blocks.append(
+                        {
+                            "type": "image",
+                            "source": {"type": "base64", "media_type": mime, "data": data},
+                        }
+                    )
+                else:
+                    blocks.append({"type": "text", "text": url})
+        return blocks
+
+    @staticmethod
+    def _gemini_parts(content):
+        """把 OpenAI 风格 content 转成 Gemini parts（text / inline_data）。"""
+        if isinstance(content, str):
+            return [{"text": content}]
+        parts = []
+        for part in content:
+            ptype = part.get("type")
+            if ptype == "text":
+                parts.append({"text": part.get("text", "")})
+            elif ptype == "image_url":
+                url = part.get("image_url", {}).get("url", "")
+                if url.startswith("data:"):
+                    header, _, data = url.partition(",")
+                    mime = header[5:].split(";")[0] or "image/png"
+                    parts.append({"inline_data": {"mime_type": mime, "data": data}})
+                else:
+                    parts.append({"text": url})
+        return parts
 
     def _chat_text(
         self,
@@ -272,6 +379,36 @@ class LLMService:
             return self._chat_text(cfg, messages, temperature)
         except Exception as exc:  # noqa: BLE001
             logger.warning("LLM 调用失败(user_id=%s): %s", user_id, exc)
+            return None
+
+    def transcribe(
+        self,
+        audio_bytes: bytes,
+        filename: str,
+        mime: str,
+        user_id: int | None = None,
+    ) -> str | None:
+        """调用 OpenAI 兼容协议的音频转录端点，返回识别文本。"""
+        cfg = self._resolve(user_id)
+        if not cfg:
+            return None
+        protocol = (cfg.get("protocol") or "openai-compatible").lower()
+        if protocol != "openai-compatible":
+            logger.warning("当前协议 %s 暂不支持语音转录", protocol)
+            return None
+        asr_model = (cfg.get("asr_model") or "whisper-1").strip() or "whisper-1"
+        endpoint = f"{cfg['base_url'].rstrip('/')}/audio/transcriptions"
+        headers = {"Authorization": f"Bearer {cfg.get('api_key', '')}"}
+        files = {"file": (filename, audio_bytes, mime)}
+        data = {"model": asr_model}
+        try:
+            with httpx.Client(timeout=120) as client:
+                resp = client.post(endpoint, headers=headers, files=files, data=data)
+                resp.raise_for_status()
+                text = (resp.json().get("text") or "").strip()
+                return text or None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("语音转录失败(user_id=%s): %s", user_id, exc)
             return None
 
 

@@ -36,8 +36,9 @@ class ResumeAgent:
         profile["source"] = "RULE"
         return {"status": "SUCCESS", "profile": profile}
 
-    def _llm_parse(self, text: str, user_id: int | None = None) -> dict | None:
-        prompt = (
+    @staticmethod
+    def _parse_prompt() -> str:
+        return (
             "你是简历解析助手。请从下面的简历文本中提取结构化信息，只输出 JSON，不要任何其他内容。\n"
             "输出格式：\n"
             "{\n"
@@ -51,9 +52,61 @@ class ResumeAgent:
             '    "description": "描述"}]\n'
             "}\n"
             "注意：简历中不存在的信息填 null 或空数组，不要编造。\n\n"
-            f"简历文本：\n{text[:6000]}"
         )
+
+    def _llm_parse(self, text: str, user_id: int | None = None) -> dict | None:
+        prompt = self._parse_prompt() + f"简历文本：\n{text[:6000]}"
         data = llm_service.chat_json([{"role": "user", "content": prompt}], user_id=user_id)
+        if not data:
+            return None
+        return self._validate_llm_output(data)
+
+    def parse_image(
+        self, file_path: str, mime_type: str, user_id: int | None = None
+    ) -> dict:
+        """解析图片简历：视觉大模型优先，OCR 兜底。"""
+        # 1) 视觉模型优先
+        if llm_service.supports_vision(user_id):
+            data = self._llm_parse_image(file_path, mime_type, user_id)
+            if data:
+                data["source"] = "LLM"
+                return {"status": "SUCCESS", "profile": data}
+
+        # 2) OCR 兜底
+        from app.services.resume_parse_service import ocr_extract_image
+
+        text = (ocr_extract_image(file_path) or "").strip()
+        if text:
+            return self.parse(text, user_id)
+        return {
+            "status": "FAILED",
+            "profile": None,
+            "message": "图片解析失败：未启用视觉模型，且本机未安装可用的 OCR 引擎。"
+            "请在“模型服务”中配置支持图片输入的视觉模型（如 gpt-4o、claude、gemini 等）。",
+        }
+
+    def _llm_parse_image(
+        self, file_path: str, mime_type: str, user_id: int | None = None
+    ) -> dict | None:
+        import base64
+        from pathlib import Path
+
+        path = Path(file_path)
+        if not path.exists():
+            return None
+        b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+        data_url = f"data:{mime_type};base64,{b64}"
+        prompt = self._parse_prompt() + "请查看下方图片中的简历内容并提取结构化信息。"
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            }
+        ]
+        data = llm_service.chat_json(messages, user_id=user_id)
         if not data:
             return None
         return self._validate_llm_output(data)

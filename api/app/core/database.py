@@ -94,6 +94,8 @@ def _ensure_llm_config_columns() -> None:
         alters.append("ALTER TABLE user_llm_configs ADD COLUMN is_active BOOLEAN DEFAULT 0")
     if "created_at" not in cols:
         alters.append("ALTER TABLE user_llm_configs ADD COLUMN created_at DATETIME DEFAULT '2026-01-01 00:00:00'")
+    if "asr_model" not in cols:
+        alters.append("ALTER TABLE user_llm_configs ADD COLUMN asr_model VARCHAR(128)")
     with engine.begin() as conn:
         for stmt in alters:
             conn.execute(text(stmt))
@@ -126,7 +128,119 @@ def _ensure_llm_config_columns() -> None:
         db.close()
 
 
+def _encrypt_legacy_llm_keys() -> None:
+    """把上版本遗留的明文 API Key 一次性加密（幂等，已加密的不动）。"""
+    from app.core.crypto import encrypt_secret, is_encrypted
+    from app.models.system_config import UserLLMConfig
+
+    insp = inspect(engine)
+    if not insp.has_table("user_llm_configs"):
+        return
+    db = SessionLocal()
+    try:
+        rows = db.query(UserLLMConfig).filter(UserLLMConfig.api_key.isnot(None)).all()
+        changed = 0
+        for row in rows:
+            if row.api_key and not is_encrypted(row.api_key):
+                row.api_key = encrypt_secret(row.api_key)
+                changed += 1
+        if changed:
+            db.commit()
+            logger.info("已加密 %s 条历史明文 LLM API Key", changed)
+    finally:
+        db.close()
+
+
+def _normalize_legacy_interview_statuses() -> None:
+    """把旧版面试状态统一到新状态机：PENDING→IN_PROGRESS，DONE→COMPLETED。"""
+    from app.models.interview import Interview
+
+    db = SessionLocal()
+    try:
+        changes = 0
+        for old, new in (("PENDING", "IN_PROGRESS"), ("DONE", "COMPLETED")):
+            rows = db.query(Interview).filter(Interview.status == old).all()
+            for row in rows:
+                row.status = new
+                changes += 1
+        if changes:
+            db.commit()
+            logger.info("已归一化 %s 条历史面试状态", changes)
+    finally:
+        db.close()
+
+
+def _ensure_resume_fail_reason() -> None:
+    """给 resumes 补齐解析失败原因列。"""
+    insp = inspect(engine)
+    if not insp.has_table("resumes"):
+        return
+    cols = {c["name"] for c in insp.get_columns("resumes")}
+    if "fail_reason" not in cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE resumes ADD COLUMN fail_reason VARCHAR(512)"))
+        logger.info("已补齐 resumes.fail_reason 列")
+
+
+def _migrate_interview_session_columns() -> None:
+    """让 interview_questions / interview_reviews 支持独立会话：
+    - 新增可空 session_id 列
+    - interview_id 改为可空（会话可独立于面试日程存在）
+    """
+    insp = inspect(engine)
+    for table_name in ("interview_questions", "interview_reviews"):
+        if not insp.has_table(table_name):
+            continue
+        cols = {c["name"]: c for c in insp.get_columns(table_name)}
+        need_session_id = "session_id" not in cols
+        interview_col = cols.get("interview_id")
+        need_nullable = interview_col is not None and interview_col.get("nullable") is False
+        if not need_session_id and not need_nullable:
+            continue
+
+        with engine.connect() as conn:
+            count = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
+
+        table_obj = Base.metadata.tables.get(table_name)
+        if table_obj is None:
+            continue
+
+        if count == 0:
+            # 空表直接按新模型重建，避免 SQLite 改列复杂
+            table_obj.drop(bind=engine, checkfirst=True)
+            table_obj.create(bind=engine)
+            logger.info("已重建空表 %s 以适配会话模型", table_name)
+            continue
+
+        if engine.dialect.name == "sqlite":
+            # 非空 SQLite：rename -> create -> copy -> drop
+            backup = f"{table_name}_backup"
+            with engine.begin() as conn:
+                conn.execute(text(f"PRAGMA foreign_keys=OFF"))
+                conn.execute(text(f"ALTER TABLE {table_name} RENAME TO {backup}"))
+                table_obj.create(bind=conn)
+                backup_cols = {c["name"] for c in inspect(engine).get_columns(backup)}
+                new_cols = {c.name for c in table_obj.columns}
+                common = [c for c in new_cols if c in backup_cols]
+                col_list = ", ".join(common)
+                conn.execute(text(f"INSERT INTO {table_name} ({col_list}) SELECT {col_list} FROM {backup}"))
+                conn.execute(text(f"DROP TABLE {backup}"))
+                conn.execute(text(f"PRAGMA foreign_keys=ON"))
+            logger.info("已迁移 SQLite 表 %s 为会话模型", table_name)
+        else:
+            with engine.begin() as conn:
+                if need_session_id:
+                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN session_id INTEGER NULL"))
+                if need_nullable:
+                    conn.execute(text(f"ALTER TABLE {table_name} MODIFY COLUMN interview_id INTEGER NULL"))
+            logger.info("已迁移 MySQL 表 %s 为会话模型", table_name)
+
+
 def ensure_schema() -> None:
     """给已有库补齐新增列（create_all 不会 ALTER）。"""
     _ensure_job_sources_columns()
     _ensure_llm_config_columns()
+    _encrypt_legacy_llm_keys()
+    _normalize_legacy_interview_statuses()
+    _ensure_resume_fail_reason()
+    _migrate_interview_session_columns()
